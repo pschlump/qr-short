@@ -1,0 +1,5 @@
+{
+      "HostComment"        : "This is the local proxy to the local server"
+    , "HostURLPort"        : "http://192.168.0.157:9001"
+    , "Copyright"         : "Copyright (C) American Certified Brands, LLC. 2018."
+}
