@@ -9,3 +9,4 @@ t432z-test-qr/
 test.1
 set_auth.sh
 qr-short
+qr-short.linux

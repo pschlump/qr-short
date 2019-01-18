@@ -1,6 +1,6 @@
 package main
 
-// Copyright (C) American Certified Brands, LLC. 2018.
+// Copyright (C) Philip Schlump 2018-2019.
 
 import (
 	"encoding/json"
