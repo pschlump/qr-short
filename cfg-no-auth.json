@@ -1,0 +1,7 @@
+{
+	  "StorageSystem" : "Redis"
+	, "RedisHost"     : "192.168.0.199"
+	, "RedisAuth"     : "ENV$REDIS_AUTH"
+	, "AuthToken"	  : "-none-"
+    , "Copyright"     : "Copyright (C) Philip Schlump 2018-2019."
+}

@@ -1,0 +1,11 @@
+out/,*
+qr-short
+qr-short.linux
+.DS_Store
+,*
+Issues.md
+plan.1
+t432z-test-qr/
+test.1
+set_auth.sh
+qr-short

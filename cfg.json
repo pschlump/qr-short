@@ -1,0 +1,8 @@
+{
+	  "StorageSystem"     : "Redis"
+	, "RedisHost"         : "192.168.0.199"
+	, "RedisAuth"         : "ENV$REDIS_AUTH"
+    , "Copyright"     	  : "Copyright (C) Philip Schlump 2018-2019."
+	, "DataFileDestProd"  : "/home/pschlump/www/2c-why.com/www/demo34/qrdata"
+	, "DataFileDest"      : "/Users/corwin/go/src/github.com/American-Certified-Brands/tools/qr-short/test-data"
+}
