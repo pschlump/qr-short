@@ -53,7 +53,8 @@ func init() {
 		DebugFlags:    make([]string, 0, 10),
 		DataFileDest:  "/Users/corwin/go/src/github.com/American-Certified-Brands/tools/qr-short/test-data",
 	}
-	// gDebug["db002"] = true
+	gDebug["db002"] = true
+	gDebug["db-auth"] = true
 	gLog = os.Stderr
 }
 
@@ -134,17 +135,19 @@ func main() {
 		}
 	}
 
-	http.Handle("/enc/", HdlrEncode(data))                 // http.../url=ToUrl
-	http.Handle("/enc", HdlrEncode(data))                  // http.../url=ToUrl
-	http.Handle("/upd/", HdlrUpdate(data))                 // http.../url=ToUrl&id=Number
-	http.Handle("/upd", HdlrUpdate(data))                  // http.../url=ToUrl&id=Number
+	http.Handle("/enc/", HdlrEncode(data))                 // http.../url=ToUrl					Auth Req
+	http.Handle("/enc", HdlrEncode(data))                  // http.../url=ToUrl					Auth Req
+	http.Handle("/upd/", HdlrUpdate(data))                 // http.../url=ToUrl&id=Number		Auth Req
+	http.Handle("/upd", HdlrUpdate(data))                  // http.../url=ToUrl&id=Number		Auth Req
 	http.Handle("/dec/", HdlrDecode(data))                 // http.../id=Number
 	http.Handle("/dec", HdlrDecode(data))                  // http.../id=Number
-	http.Handle("/list/", HdlrList(data))                  //
-	http.Handle("/list", HdlrList(data))                   //
+	http.Handle("/list/", HdlrList(data))                  // http...?beg=NUmber&end=Number		Auth Req.
+	http.Handle("/list", HdlrList(data))                   // http...?beg=NUmber&end=Number		Auth Req.
 	http.Handle("/bulkLoad", HdlrBulkLoad(data))           //
 	http.Handle("/status", http.HandlerFunc(HandleStatus)) //
 	http.Handle("/q/", HdlrRedirect(data))                 //
+	fs := http.FileServer(http.Dir("www"))
+	http.Handle("/", fs)
 
 	if db11 {
 		fmt.Printf("just before ListenAndServe gCfg=%s\n", godebug.SVarI(gCfg))
@@ -163,7 +166,9 @@ var nReq = 0
 func HandleStatus(www http.ResponseWriter, req *http.Request) {
 	nReq++
 	fmt.Fprintf(os.Stdout, "\n%sStatus: working.  Requests Served: %d.%s\n", MiscLib.ColorGreen, nReq, MiscLib.ColorReset)
-	fmt.Fprintf(www, "Working.  %d requests.\n", nReq)
+	www.Header().Set("Content-Type", "text/html; charset=utf-8")
+	www.WriteHeader(http.StatusOK) // 401
+	fmt.Fprintf(www, "Working.  %d requests. (Version 0.0.18, Mod Date: Thu Feb  7 06:49:19 MST 2019)\n", nReq)
 	return
 }
 
@@ -259,12 +264,16 @@ func HdlrDecode(data storage.PersistentData) http.Handler {
 		if strings.HasPrefix(req.URL.Path, "/dec/") {
 			id = req.URL.Path[len("/dec/"):]
 		} else {
-			id = req.URL.Query().Get("url")
+			id = req.URL.Query().Get("id")
 		}
 		if id == "" {
 			www.WriteHeader(http.StatusNotFound)
 			fmt.Fprintf(www, "URL Not Found.\n")
+			fmt.Fprintf(os.Stderr, "URL Not Found.\n")
 			return
+		}
+		if db1 {
+			fmt.Printf("Decode: id=%s, %s\n", id, godebug.LF())
 		}
 
 		urlStr, err := data.Fetch(id)

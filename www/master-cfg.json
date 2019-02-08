@@ -1,0 +1,14 @@
+{
+    "master": {
+		"method": "geth"
+        , "ws": "http://192.168.0.199:8545/"
+        , "rpc": "http://192.168.0.199:8546/"
+    }
+    , "backup": {
+		"method": "rest-api"
+        , "url": "http://192.168.0.157:9001/get-public-key"
+    }
+    , "method": "sha256"
+    , "host_prod": "192.154.97.74"
+	, "host2prod": "198.58.107.206"
+}

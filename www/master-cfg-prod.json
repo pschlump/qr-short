@@ -1,0 +1,12 @@
+{
+    "mastergeth": {
+        "ws": "https://un:pw@192.154.97.74:18545/"
+        , "rpc": "https://un:pw@192.154.97.74:18546/"
+    }
+    , "backupgeth": {
+        "ws": "https://un:pw@192.154.97.74:18545/"
+        , "rpc": "https://un:pw@192.154.97.74:18546/"
+    }
+    , "method": "sha256"
+    , "host_prod": "192.154.97.74"
+}

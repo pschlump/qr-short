@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<link rel="apple-touch-icon" href="favicon.png?v=2">
+	<link rel="shortcut icon" sizes="120x120" href="favicon.png?v=2">
+	<!-- <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico"> -->
+	<meta name="viewport" content="width=device-width, initial-scale=1"> <!-- Make the page mobile compatible -->
+	<meta name="mobile-web-app-capable" content="yes">
+	<title>Onboaridng Demo</title>
+	<script src="js/jquery-2.1.4.js"></script>
+	<script src="style/bootstrap-3.3.7/dist/js/bootstrap.js"></script>
+	<link rel="stylesheet" href="/style/bootstrap.min.css"> <!-- version 3.3.7 Bootstrap -->
+	<link rel="stylesheet" href="/style/bootstrap-theme.min.css">
+<style>
+.panel-heading {
+	font-size: x-large;
+}
+</style>
+</head>
+<body>
+
+	<div class="page-header"><h1> Add / Update event on specific Animal </h1></div>
+
+	<div class="content container">
+		<button class="btn btn-primary" id="b_search" type="button">Search</button> 
+		<button class="btn btn-primary" id="b_list" type="button">List</button> 
+		<button class="btn btn-primary" id="b_new_event" type="button">New Event</button> 
+		<br>&nbsp;<br>
+	</div>
+
+	<div class="content container">
+		<div class="my_page" id="new-page">
+			<div class="row">
+				<div class="col-sm-10">
+					<div class="panel panel-info">
+						<div class="panel-heading"> Track Anaimal Event </div>
+						<div class="panel-body">
+							<form class="is-form" id="form03" method="POST" action="/api/acb1/track_add">
+								<div class="form-group ">
+									<table><tr><td>
+										<span id="eventDropdown"></span>
+									</td><td>&nbsp;&nbsp;</td><td>
+										<h4><span id="eventSelected"></span></h4>
+									</td></tr></table>
+								</div>
+								<div class="form-group ">
+									<label class="form-control-label">RFID/Animal ID</label>
+									<input class="form-control" id="tag", name="tag" type="text">	   
+								</div>
+								<div class="form-group ">
+									<label class="form-control-label">Notes</label>
+									<input class="form-control" id="notes" name="notes" type="text">	   
+								</div>
+								<div class="form-group ">
+									<button class="btn btn-primary" type="button">Cancel</button> 
+									<button class="btn btn-primary" type="submit">Track Individual Animal/Event</button> 
+								</div>
+							</form>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="my_page" id="list-page">
+			<div class="row">
+				<div class="col-sm-10">
+					<div class="panel panel-info">
+						<div class="panel-heading"> List All Animals </div>
+						<div class="panel-body">
+							<form class="is-form" id="form02" method="GET" action="/api/v001/v1_list_tag">
+								<div class="form-group ">
+									<button class="btn btn-primary" type="button">Cancel</button> 
+									<button class="btn btn-primary" type="submit">List Animals</button> 
+								</div>
+							</form>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="my_page" id="search-page">
+			<div class="row">
+				<div class="col-sm-10">
+					<div class="panel panel-info">
+						<div class="panel-heading"> Search For An Animals </div>
+						<div class="panel-body">
+							<form class="is-form" id="form01" method="POST" action="/api/acb1/getInfo">
+								<div class="form-group ">
+									<label class="form-control-label">RFID/Animal ID</label>
+									<input class="form-control" id="tag2", name="tag2" type="text">	   
+								</div>
+								<div class="form-group ">
+									<button class="btn btn-primary" type="button">Cancel</button> 
+									<button class="btn btn-primary" type="submit">Search</button> 
+								</div>
+							</form>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div>
+			<div class="row">
+				<div class="col-sm-10">
+					<div class="panel panel-info">
+						<div class="panel-heading"> Output </div>
+						<div class="panel-body">
+							<pre id="output"></pre>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+	</div>
+
+<script>
+
+var auth_token = "";
+var xsrf_token = "";
+var jwt_token = "";
+var setCookie = "n";
+var useHeader = "n";
+var setTheCookie = function() {}
+
+function createCookie(name,value,days) {
+	var expires = "";
+	if (days) {
+		var date = new Date();
+		date.setTime(date.getTime()+(days*24*60*60*1000));
+		expires = "; expires="+date.toGMTString();
+	} 
+	document.cookie = name+"="+value+expires+"; path=/";
+}
+
+function getCookie(name) {
+	var nameEQ = name + "=";
+	var ca = document.cookie.split(';');
+	for(var i=0;i < ca.length;i++) {
+		var c = ca[i];
+		while (c.charAt(0)==' ') c = c.substring(1,c.length);
+		if (c.indexOf(nameEQ) == 0) {
+			return c.substring(nameEQ.length,c.length);
+		}
+	}
+	return null;
+}
+
+function delCookie(name) {
+	createCookie(name,"",-1);
+}
+
+function URLStrToHash(query) {
+	var rv = {};
+	var decode = function (s) { return decodeURIComponent(s.replace(/^\?/,"").replace(/\+/g, " ")); };
+
+	var p1 = query.replace(/([^&=]+)=?([^&]*)/g,function(j,n,v){
+		n = decode(n);
+		v = decode(v);
+		if ( typeof(rv[n]) === "undefined" ) {
+			rv[n] = ( typeof v === "undefined" ) ? "" : v;
+		} else if ( typeof(rv[n]) === "string" ) {
+			var x = rv[n];
+			rv[n] = [];
+			rv[n].push ( x );
+			rv[n].push ( v );
+		} else {
+			rv[n].push ( v );
+		}
+		return "";
+	});
+	return rv;
+}
+
+//var v = URLStrToHash("a=12&b=22&c&d");
+//console.log ( 'v=', v );
+//var v = URLStrToHash("a=12&b=22&x=aa&x=bb&x=cc&x=dd&x=ee&d=888888");
+//console.log ( 'v=', v );
+
+function Id(x){
+	return document.getElementById(x);
+}
+
+var g_origin = window.location.origin;
+if ( ! g_origin ) {			// Probablyl running on Opera
+	g_origin = window.location.protocol + "//" + window.location.host;
+}
+
+var g_param = URLStrToHash ( window.location.search );
+
+console.log ( window.location.search );
+console.log ( "g_param=", g_param );
+
+var rc = getCookie('recovery_token');
+if ( rc != "" ) {
+	console.log ( "Cooky recovery token set",rc);
+}
+if ( g_param.recovery_token ) {
+	console.log ( "Setting recovery token",g_param.recovery_token);
+	createCookie('recovery_token',g_param.recovery_token);
+}
+
+$("#setCookie").change(function() {
+	if(this.checked) {
+		// console.log ( "setCookie checked" );
+		setCookie = "y";
+		setTheCookie = function(auth_token) { createCookie("auth_token",auth_token); };
+		createCookie("auth_token",auth_token); 
+	} else {
+		// console.log ( "setCookie un-checked" );
+		setCookie = "n";
+		setTheCookie = function() { delCookie("auth_token"); };
+		delCookie("auth_token"); 
+	}
+});
+
+$("#delCookie").click(function() {
+	delCookie("auth_token"); 
+	$("#output").text( "it's gone" );
+});
+
+function SetupJWTBerrer() {
+	$.ajaxSetup({
+		beforeSend: function(xhr) {
+			if ( jwt_token && jwt_token !== "" ) {
+				xhr.setRequestHeader('Authorization', 'bearer '+jwt_token);
+			} else if ( auth_token && auth_token !== "" ) {
+				xhr.setRequestHeader('Authorization', 'bearer '+auth_token);
+			}
+			if ( xsrf_token != "" ) {
+				xhr.setRequestHeader('X-Xsrf-Token', xsrf_token);
+			}
+		}
+		,dataFilter: function(data, type) {
+			var prefix = ['//', ')]}\'', 'while(1);', 'while(true);', 'for(;;);'], i, l, pos;
+
+			// console.log ( "dataFilter: data type", type );
+
+			if (type && type != 'json' && type != 'jsonp') {
+				return data;
+			}
+
+			// console.log ( "dataFilter: raw data before remove of prefix.", data );
+
+			var dl = data.length;	 // data length 
+			for (i = 0, l = prefix.length; i < l; i++) {
+				var pl = prefix[i].length; // pattern lenght
+				// console.log ( "dataFilter: raw substr -={" + data.substring(0,pl) + "}=-" );
+				if ( dl >= pl && data.substring(0,pl) === prefix[i] ) {
+					return data.substring(pl);
+				}
+			}
+
+			return data;
+		}
+	});
+}
+
+$("#useHeader").change(function() {
+	if(this.checked) {
+		// console.log ( "useHeader checked" );
+		useHeader = "y";
+		//$.ajaxSetup({
+		//	beforeSend: function(xhr) {
+		//		xhr.setRequestHeader('Authorization', 'bearer '+auth_token);
+		//		if ( xsrf_token != "" ) {
+		//			xhr.setRequestHeader('X-Xsrf-Token', xsrf_token);
+		//		}
+		//	}
+		//});
+	} else {
+		// console.log ( "useHeader un-checked" );
+		useHeader = "n";
+		//$.ajaxSetup({
+		//	beforeSend: function(xhr) {
+		//		if ( xsrf_token != "" ) {
+		//			xhr.setRequestHeader('X-Xsrf-Token', xsrf_token);
+		//		}
+		//	}
+		//});
+	}
+});
+
+// http://stackoverflow.com/questions/1960240/jquery-ajax-submit-form
+
+function submitIt ( event, id ) {
+	console.log( "Handler for #"+id+".submit() called." );
+	event.preventDefault();
+
+	// alert("pause1");
+	SetupJWTBerrer() 
+
+	var frm = $('#'+id);
+	$.ajax({
+		type: frm.attr('method'),
+		url: frm.attr('action'),
+		data: frm.serialize(),
+		success: function (data) {
+			console.log ( 'data=', data );	 // already parsed.
+			if ( data.status == "success" && data.xsrf_token ) {
+				xsrf_token = data.xsrf_token;
+			}
+			if ( data.status == "success" && data.auth_token ) {
+				auth_token = data.auth_token;
+				$('.is-auth-token').val(auth_token);
+				setTheCookie(auth_token);
+			}
+			if ( data.status == "success" && data.jwt_token ) {
+				jwt_token = data.jwt_token;
+			}
+			if ( data.status && data.status != "success" ) {
+				alert ( data.msg );
+			}
+			$("#output").text( JSON.stringify(data, null, 4) );
+		},
+		error: function(resp) {
+			console.log("error=",resp);
+			alert("got error status="+resp.status+" "+resp.statusText);
+		}
+	});
+}
+
+var animalEvents = [
+	{ "tag": "Create Animal"	, "id": "1" },
+	{ "tag": "Update Animal"	, "id": "2" },
+	{ "tag": "Transform Animal"	, "id": "3" },
+	{ "tag": "Split Animal"		, "id": "4" },
+	{ "tag": "Note Animal"		, "id": "5" },
+	{ "tag": "Remvoe Animal"	, "id": "6" }
+];
+// <span id="eventDropdown"></span>
+/*
+<div class="dropdown">
+  <button class="btn btn-primary dropdown-toggle" type="button" data-toggle="dropdown">Dropdown Example
+  <span class="caret"></span></button>
+  <ul class="dropdown-menu">
+    <li><a href="#">HTML</a></li>
+    <li><a href="#">CSS</a></li>
+    <li><a href="#">JavaScript</a></li>
+  </ul>
+</div>
+*/
+function setInput( id, val, tag ) {
+	console.log ( "setInput(", id, val );
+	$(id).val(val);
+	$("#eventSelected").html("<div>"+tag+"</div>");
+}
+function paintEvents() {
+	var s = [
+		"<div class=\"dropdown\">"
+		  ,"<input id=\"dd_val\" id=\"event\" name=\"event\" type=\"hidden\">"
+		  ,"<button class=\"btn btn-primary dropdown-toggle\" type=\"button\" data-toggle=\"dropdown\">Event Type"
+		  ,"<span class=\"caret\"></span></button>"
+		  ,"<ul class=\"dropdown-menu\">"
+	].join("\n");
+	for ( var i = 0, mx = animalEvents.length; i < mx; i++ ) {
+		s += "<li><a href=\"#\" onclick=\"setInput('#dd_val','"+animalEvents[i].id+"','"+animalEvents[i].tag+"')\">"
+			+animalEvents[i].tag+"</a></li>\n";
+	}	
+	s += [
+		  "</ul>"
+		,"</div>"
+	].join("\n");
+	// console.log ( 's=', s );
+	$("#eventDropdown").html(s);
+									
+}
+
+function getListOfEvents() {
+	// Xyzzy - get list of animalEvents
+	paintEvents()
+}
+
+// Xyzzy - menu buttons - switch page.
+// <button class="btn btn-primary" id="b_search" type="button">Search</button> 
+// <button class="btn btn-primary" id="b_list" type="button">List</button> 
+// <button class="btn btn-primary" id="b_new_event" type="button">New Event</button> 
+
+// Xyzzy - site id - pull from URL - based on previous page.
+var site_id = "100";
+
+function doPage( pn ) {
+	curPage = pn;
+    $(".my_page").hide();
+    $("#"+curPage).show();
+	$("#outErr").html("");		
+	//if ( !isAdmin ) {
+	//	$(".my_admin").hide();
+	//}
+	$("#output").text( "" );
+}
+
+doPage( "new-page" );
+
+$("#b_search").click(function(){
+	console.log ( "Switch to Search" );
+	doPage ( "search-page" );
+});
+$("#b_list").click(function(){
+	console.log ( "Switch to List" );
+	doPage ( "list-page" );
+});
+$("#b_new_event").click(function(){
+	console.log ( "Switch to New/Update" );
+	doPage ( "new-page" );
+});
+
+
+
+
+
+
+// curl -X POST "http://127.0.0.1:9019/api/acb1/track_add?bulk=$( one-line ./data001.json | query-escape )"
+/*
+{
+	"Site_id":"100",
+	"Auth":"kip.philip",
+	"Row": [
+		{
+			"tag": "34000000000001",
+			"event": "Create-Event",
+			"date": ""
+		},
+		{
+			"tag": "34000000000002",
+			"event": "Create-Event",
+			"date": ""
+		}
+	]
+}
+*/
+
+
+
+
+function submitIt1 ( event, id ) {
+	// http://127.0.0.1:9019/api/acb1/getInfo?api_table_key=kip.philip&tag=111
+	console.log( "Handler for #"+id+".submit() called." );
+	event.preventDefault();
+
+	var aTag = $("#tag2").val();
+	var ranNum = Math.random();
+	var param = { "api_table_key": "kip.philip", "tag": aTag, "_ran_": ranNum };
+
+	var frm = $('#'+id);
+	$.ajax({
+		type: frm.attr('method'),
+		url: frm.attr('action'),
+		data: param, // frm.serialize(),
+		success: function (data) {
+			console.log ( 'data=', data );	 // already parsed.
+			if ( data.status && data.status != "success" ) {
+				alert ( data.msg );
+			}
+			$("#output").text( JSON.stringify(data, null, 4) );
+		},
+		error: function(resp) {
+			console.log("error=",resp);
+			alert("got error status="+resp.status+" "+resp.statusText);
+		}
+	});
+}
+
+function submitIt2 ( event, id ) {
+	console.log( "Handler for #"+id+".submit() called." );
+	event.preventDefault();
+
+	var ranNum = Math.random();
+	var param = { "api_table_key": "kip.philip", "_ran_": ranNum };
+
+	var frm = $('#'+id);
+	$.ajax({
+		type: frm.attr('method'),
+		url: frm.attr('action'),
+		data: param, // frm.serialize(),
+		success: function (data) {
+			console.log ( 'data=', data );	 // already parsed.
+			if ( data.status && data.status != "success" ) {
+				alert ( data.msg );
+			}
+			$("#output").text( JSON.stringify(data, null, 4) );
+		},
+		error: function(resp) {
+			console.log("error=",resp);
+			alert("got error status="+resp.status+" "+resp.statusText);
+		}
+	});
+}
+
+function submitIt3 ( event, id ) {
+	console.log( "Handler for #"+id+".submit() called." );
+	event.preventDefault();
+
+	var aTag = $("#tag").val();
+	var eventPicked = $("#dd_val").val();
+	var notes = $("#notes").val();
+console.log("aTag=", aTag, "eventPicked=", eventPicked );
+
+	// if ( !aTag || aTag == "" ) {
+	if ( aTag === undefined ) {
+		$("#output").text( "Must supply a RFID." );
+		return
+	}
+	if ( !eventPicked || eventPicked == "" ) {
+		$("#output").text( "Must choose an event." );
+		return
+	}
+	var bData = [
+		{
+			"tag": aTag,
+			"event": eventPicked,
+			"notes": notes,
+			"date": ""
+		}
+	];	
+	var bulk = {};
+	bulk["Site_id"] = site_id;
+	bulk["Auth"] = "kip.philip";
+	bulk["Row"] = bData;
+
+	console.log ( "bulk=", bulk );
+
+	var ranNum = Math.random();
+	var param = { "api_table_key": "kip.philip", "bulk": JSON.stringify(bulk), "_ran_": ranNum };
+
+	var frm = $('#'+id);
+	$.ajax({
+		type: frm.attr('method'),
+		url: frm.attr('action'),
+		data: param, // frm.serialize(),
+		success: function (data) {
+			console.log ( 'data=', data );	 // already parsed.
+			if ( data.status && data.status != "success" ) {
+				alert ( data.msg );
+			}
+			$("#output").text( JSON.stringify(data, null, 4) );
+		},
+		error: function(resp) {
+			console.log("error=",resp);
+			alert("got error status="+resp.status+" "+resp.statusText);
+		}
+	});
+}
+
+$( "#form03" ).submit(function( event ) { submitIt3 ( event, 'form03' ); });
+$( "#form02" ).submit(function( event ) { submitIt2 ( event, 'form02' ); });
+$( "#form01" ).submit(function( event ) { submitIt1 ( event, 'form01' ); });
+
+getListOfEvents();
+
+</script>
+
+</body>
+</html>

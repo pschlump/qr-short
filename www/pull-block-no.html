@@ -1,0 +1,60 @@
+<script>
+
+//connect web3 and check if web3 is connected correctly
+    if (typeof web3 !== 'undefined') {
+        web3 = new Web3(web3.currentProvider);
+    } else {
+        // set the provider you want from Web3.providers
+        web3 = new Web3(new Web3.providers.HttpProvider("http://localhost:8545"));
+    }
+    if(web3.isConnected()) {
+    console.log("connected"); 
+    } else {
+    console.log("not connected")
+    }
+
+//pulls state information from the blockchain
+    web3.eth.filter('latest').changed(function(){
+      var blockNumber = web3.eth.number;
+      document.getElementById('latestBlock').innerText = blockNumber;
+      var hash = web3.eth.getBlockNumber();
+      document.getElementById('latestBlockHash').innerText = hash;
+      var timeStamp = web3.eth.block(blockNumber).timestamp;
+      document.getElementById('latestBlockTimestamp').innerText = Date(timeStamp);
+    });
+
+/*
+FROM: https://ethereum.stackexchange.com/questions/28192/using-web3-to-pull-block-hash-and-timestamp
+
+Block number is retrieved by:
+
+	var blockNumber = web3.eth.blockNumber;
+
+Block hash is retrieved by:
+
+	var blockHash = web3.eth.getBlock(blockNumber).hash;
+
+Timestamp is:
+
+	var timestamp = web3.eth.getBlock(blockNumber).timestamp;
+
+Read the documentation here for more: https://github.com/ethereum/wiki/wiki/JavaScript-API
+
+*/
+
+
+</script>
+
+
+<div class="container">
+      <h2>Blockchain Monitor</h2>
+      <div class="panel panel-default">
+        <div class="panel-heading">Ethereum Network</div>
+        <div class="panel-body"> 
+            <h5>Coinbase Address: <strong id="coinbase"></strong></h5>
+            <h5>Latest Block Number: <strong id="latestBlock"></strong></h5>
+            <h5>Latest Block Timestamp: <strong id="latestBlockTimestamp"></strong></h5>
+            <h5>Latest Block Hash: <strong id="latestBlockHash"></strong></h5>
+        </div>
+      </div>
+</div>

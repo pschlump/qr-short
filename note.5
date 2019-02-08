@@ -1,0 +1,53 @@
+
+ wget --header "X-Qr-Auth: ${QR_SHORT_AUTH_TOKEN}" -o ,o -O ,oo 'http://192.168.0.157:2004/list?beg=0&end=9999'
+ wget --header "X-Qr-Auth: ${QR_SHORT_AUTH_TOKEN}" -o ,o -O ,oo 'http://t432z.com/list?beg=0&end=99'
+
+List: {
+	"Method": "GET",
+	"URL": {
+		"Scheme": "",
+		"Opaque": "",
+		"User": null,
+		"Host": "",
+		"Path": "/list",
+		"RawPath": "",
+		"ForceQuery": false,
+		"RawQuery": "beg=0\u0026end=99",
+		"Fragment": ""
+	},
+	"Proto": "HTTP/1.1",
+	"ProtoMajor": 1,
+	"ProtoMinor": 1,
+	"Header": {
+		"Accept": [
+			"*/*"
+		],
+		"Accept-Encoding": [
+			"identity"
+		],
+		"User-Agent": [
+			"Wget/1.19.4 (darwin15.6.0)"
+		],
+		"X-Forwarded-For": [
+			"127.0.0.1"
+		],
+		"X-Qr-Auth": [
+			"xxxx"
+		]
+	},
+	"Body": {},
+	"GetBody": "json: unsupported type: func() (io.ReadCloser, error)",
+	"ContentLength": 0,
+	"TransferEncoding": null,
+	"Close": false,
+	"Host": "localhost:9001",
+	"Form": null,
+	"PostForm": null,
+	"MultipartForm": null,
+	"Trailer": null,
+	"RemoteAddr": "192.168.0.157:57345",
+	"RequestURI": "/list?beg=0\u0026end=99",
+	"TLS": null,
+	"Cancel": "json: unsupported type: <-chan struct {}",
+	"Response": null
+}, File: /Users/corwin/go/src/github.com/American-Certified-Brands/tools/qr-short/qr-short.go LineNo:320

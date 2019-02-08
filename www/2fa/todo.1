@@ -1,0 +1,219 @@
+
+For Kip:
+	1. How to set qr-short - url - commands - 0007 Qr Codes
+		2. Update - + list of QRs and Destinations
+		3. etc. on QRs
+	2. End points for register/login - sample output for 2fa
+	3. 2fa App
+
+		1. Setup 0009 batch
+		2. Page with all printable
+		3. Set QRs to URLs example
+		4. "key"
+	
+
+
+
+
+Later:
+	1. Fix Xref token
+	2. 
+
+
+
+
+2. Imagine the finished product - in detail - then build it
+	1. Website (for marketing)
+		1. Main page - 2 items - Security / How To Implement
+		2. Many how to pages
+		3. Security Levels page ( JWT, JWT + 2fa, zero-knowledge encrypted )
+	2. Administration Pages
+	3. API for Registered Users
+	4. Registration Options
+	5. Demo Sites - Atleast 1 working demo with all code for each supported front end.
+		1. React / Redux
+		2. jQuery
+		3. PHP
+		4. Python / Dgango
+		5. vue.js
+		6. ...
+		7. Electron
+		8. Desktop Mac
+		8. Desktop PC
+		8. Desktop Linux
+		8. IoT / IoT Upgrade
+		8. 
+	6. Use "job" applications as a way to find companys to (inside sales) direct-advertise to.
+	7. Single Sign ON systems (figure out how to do this)
+	7. oauth2 server - integrated sign on.
+	7. API using berrer tokens 
+	7. API using berrer tokens and 2fa key
+	7. Key based sign on Ubikey etc as proof of posesison.
+	7. Provide an open-source site solution for 2fa login ( JWT + 2fa only )
+	7. Push button to login based on AesSrp/Encrypted zero-knowledge-proof of posession and Web-Socket
+	7. Build out code in web-assembley for all of the client side.  Use Web-Socket for comunication.
+	7. Users and user info that will satisfy GDPR and Californias data privacy 
+		1. Hash IP.
+		2. Encrypt data on server - fp etc, unique user_hash etc.
+		3.
+	8. Consider device recognition with unique cached file (manifest unique per device). ETAG as sha256 hash of unique manifest.
+
+
+3. Goal:
+	100 paying $35 month + over 20 of $0.10 per user per month. (or similar - do reserch)
+
+4. Vision
+	1. Good documents
+	2. Diagrams of flow for each path thorugh code
+	3. works with both CORS and JSONp - as a config item
+	4. Can use a "auth-proxy" on a local system - so don't need CORS
+	5.
+
+
+
+
+Unsued parameter X-Go-FTL-Sesion-Id
+Unsued parameter val2fa
+Unsued parameter _
+Unsued parameter callback
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+
+
+
+2. Documents
+	1. What register dose
+	2. How to usee
+
+3. Admin Pages
+
+4. Usage Pages
+
+5. Send EMail using "lambda"
+
+6.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1. Create the API for setup
+	2. Add in the Redis to use ID -> hash
+	3. Report if timed out.
+	4. Add in a page - to do setup with entered ID.
+	5. Reprot errors
+
+2. Create the API for pull of 2 min HASH value.
+	/2fa/pull-2-min-hash
+
+3. Create the API call/library for validate of entered 6 digit number
+	/2fa/is-valid-2fa?id=, user=, 
+
+4. Remember 1 time codes
+	/2fa/generate-1-time-codes?fmt=list fmt=pdf
+		-> codes as JSON, url of PDF of codes
+	/2fa/n-remain-1-time-codes
+
+
+
+x2fa.go - 2fa support 
+
+
+
+
+1. Test
+	*1. Federated register/login
+	*2.  192.168.0.157 		t1.test1.com - serve as app
+	*	192.168.0.158 		t2.test1.com - serve as user (federate to t1.test1.com)
+

@@ -41,3 +41,9 @@ it should take you to http://www.2c-why.com/ . The text encode in the QR code is
 
 ![QR Code for http://www.2c-why.com](https://github.com/American-Certified-Brands/tools/blob/master/qr-short/sample-qr/to-2c-why.com.png?raw=true "QR Code to demo proxy and go to http://www.2c-why.com/")
 
+
+# API
+
+http://t432z.com/index.html is an interactive app for setting/updating/listing the QR codes.
+
+

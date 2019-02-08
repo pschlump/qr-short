@@ -189,7 +189,8 @@ func (rs *RedisStore) List(beg, end string) (dat []ListData, err error) {
 	var begI64, endI64 int64
 	maxID, err = rs.redisConn.Cmd("GET", rs.RedisPrefix+"!seq").Int()
 	if err != nil {
-		fmt.Fprintf(rs.Log, "Error: %s, %s\n", err, godebug.LF())
+		fmt.Fprintf(rs.Log, "Fatal Error: %s, %s\n", err, godebug.LF())
+		os.Exit(2)
 		return
 	}
 
