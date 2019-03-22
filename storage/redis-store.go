@@ -348,6 +348,10 @@ func (rs *RedisStore) UpdateInsert(URL string, ID string) (ur UpdateRespItem) {
 	return
 }
 
+func (rs *RedisStore) IncrementRedirectCount(id string) {
+	// xyzzy - need to implement this.
+}
+
 var db3 = false
 var db4 = false
 var db5 = false

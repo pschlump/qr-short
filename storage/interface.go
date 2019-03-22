@@ -14,6 +14,7 @@ type PersistentData interface {
 	NextID() (ID string)
 	List(string, string) ([]ListData, error)
 	UpdateInsert(URL string, ID string) (ur UpdateRespItem)
+	IncrementRedirectCount(id string)
 }
 
 // ListData is used to format the data returned by the /list API

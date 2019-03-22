@@ -121,3 +121,7 @@ func FileExists(name string) bool {
 	}
 	return true
 }
+
+func (fs *FileStorage) IncrementRedirectCount(id string) {
+	// xyzzy - need to implement this.
+}

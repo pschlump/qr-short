@@ -9,16 +9,23 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
 
 	"github.com/American-Certified-Brands/tools/qr-short/storage"
 	"github.com/pschlump/MiscLib"
-	"github.com/pschlump/check-json-syntax/lib"
+	jsonSyntaxErroLib "github.com/pschlump/check-json-syntax/lib"
 	"github.com/pschlump/getHomeDir"
 	"github.com/pschlump/godebug"
 )
+
+// xyzzy2000 Wed Mar 20 16:52:43 MDT 2019 -- PJS -- count number of redirects
+// xyzzy2001 User login - Keep "user_id" assoc with data.
+// 		auth_token -> user_id on data changes.
+//		qa:auth_token -> user_id
+// xyzzy2003 Drop file storage
 
 // ConfigType is the global configuration that is read in from cfg.json
 type ConfigType struct {
@@ -58,23 +65,23 @@ func init() {
 	gLog = os.Stderr
 }
 
-func main() {
-	var Note = flag.String("note", "", "User note")
-	_ = Note
+var Note = flag.String("note", "", "User note")
+var Cfg = flag.String("cfg", "cfg.json", "config file, default ./cfg.json")
+var Port = flag.String("port", "", "set port to listen on")
+var DataDir = flag.String("datadir", "", "set directory to put files in if storage is 'file'")
+var MaxCPU = flag.Bool("maxcpu", false, "set max number of CPUs.")
+var Store = flag.String("store", "", "which storage system to use, file, Redis.")
+var Debug = flag.String("debug", "", "comma list of flags")
+var AuthToken = flag.String("authtoken", "", "auth token for update/set")
 
-	var Cfg = flag.String("cfg", "cfg.json", "config file, default ./cfg.json")
-	var Port = flag.String("port", "", "set port to listen on")
-	var DataDir = flag.String("datadir", "", "set directory to put files in if storage is 'file'")
-	var MaxCPU = flag.Bool("maxcpu", false, "set max number of CPUs.")
-	var Store = flag.String("store", "", "which storage system to use, file, Redis.")
-	var Debug = flag.String("debug", "", "comma list of flags")
-	var AuthToken = flag.String("authtoken", "", "auth token for update/set")
+func main() {
 
 	var err error
 
 	flag.Parse()
 	fns := flag.Args()
 	if len(fns) > 0 {
+		// Copy to new version !
 		fmt.Printf("Usage: qr-short [--cfg fn] [--port ####] [--datadir path] [--maxcpu] [--store file|Redis] [--debug flag,flag...] [--authtoken token]\n")
 		os.Exit(1)
 	}
@@ -86,6 +93,7 @@ func main() {
 		}
 	}
 
+	// ---- Copy to new verion ---- // ---- Copy to new verion ---- // ---- Copy to new verion ---- // ---- Copy to new verion ----
 	for _, dd := range gCfg.DebugFlags {
 		gDebug[dd] = true
 	}
@@ -135,6 +143,8 @@ func main() {
 		}
 	}
 
+	// xyzxzy - AUTH /getAuth/?un=UU&pw=YY -> Auth Token / Cookie
+
 	http.Handle("/enc/", HdlrEncode(data))                 // http.../url=ToUrl					Auth Req
 	http.Handle("/enc", HdlrEncode(data))                  // http.../url=ToUrl					Auth Req
 	http.Handle("/upd/", HdlrUpdate(data))                 // http.../url=ToUrl&id=Number		Auth Req
@@ -148,6 +158,7 @@ func main() {
 	http.Handle("/q/", HdlrRedirect(data))                 //
 	fs := http.FileServer(http.Dir("www"))
 	http.Handle("/", fs)
+	// ---- End ---- // ---- End ---- // ---- End ---- // ---- End ---- // ---- End ---- // ---- End ---- // ---- End ---- // ----
 
 	if db11 {
 		fmt.Printf("just before ListenAndServe gCfg=%s\n", godebug.SVarI(gCfg))
@@ -205,7 +216,7 @@ func HdlrEncode(data storage.PersistentData) http.Handler {
 			fmt.Fprintf(gLog, "Encode: %s = %s\n", urlStr, enc)
 			return
 		}
-		www.WriteHeader(http.StatusNotFound)
+		www.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(www, "Error: expected POST or GET with `url` parameter\n")
 	}
 	return http.HandlerFunc(handleFunc)
@@ -247,7 +258,10 @@ func HdlrUpdate(data storage.PersistentData) http.Handler {
 			fmt.Fprintf(gLog, "Update Encode: %s = %s\n", urlStr, enc)
 			return
 		}
-		www.WriteHeader(http.StatusNotFound)
+
+		fmt.Printf("%sFailed foundUrl=%v [%s] foundId=%v [%s] foundData=%v [%s]%s\n", MiscLib.ColorRed, foundUrl, urlStr, foundId, id, dataFound, dataStr, MiscLib.ColorReset)
+
+		www.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(www, "Error: expected POST or GET with `url` parameter\n")
 	}
 	return http.HandlerFunc(handleFunc)
@@ -267,7 +281,7 @@ func HdlrDecode(data storage.PersistentData) http.Handler {
 			id = req.URL.Query().Get("id")
 		}
 		if id == "" {
-			www.WriteHeader(http.StatusNotFound)
+			www.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(www, "URL Not Found.\n")
 			fmt.Fprintf(os.Stderr, "URL Not Found.\n")
 			return
@@ -278,7 +292,7 @@ func HdlrDecode(data storage.PersistentData) http.Handler {
 
 		urlStr, err := data.Fetch(id)
 		if err != nil {
-			www.WriteHeader(http.StatusNotFound)
+			www.WriteHeader(http.StatusExpectationFailed)
 			fmt.Fprintf(www, "URL Not Found.  Error: %s\n", err)
 			return
 		}
@@ -298,26 +312,46 @@ func HdlrRedirect(data storage.PersistentData) http.Handler {
 		}
 		id := req.URL.Path[len("/q/"):]
 		qry := req.URL.RawQuery
+		fmt.Printf("AT: %s qry ->%s<-\n", godebug.LF(), qry)
 
 		fmt.Printf("id: [%s]\n", id)
 
-		url, err := data.Fetch(id)
+		URL, err := data.Fetch(id)
 		if err != nil {
+			fmt.Printf("%sRedirect occurring from [%s] to [%s] -- failed to find in Redis%s\n", MiscLib.ColorCyan, id, URL, MiscLib.ColorReset)
 			www.WriteHeader(http.StatusNotFound)
 			www.Write([]byte("URL Not Found. Error: " + err.Error() + "\n"))
 			return
 		}
+		/*
+			URL, err = url.QueryUnescape(URL)
+			if err != nil {
+				fmt.Printf("%sRedirect occurring from [%s] to [%s] -- error:%s%s\n", MiscLib.ColorCyan, id, URL, err, MiscLib.ColorReset)
+				www.WriteHeader(500)
+				www.Write([]byte("URL Not Found. Error: " + err.Error() + "\n"))
+				return
+			}
+		*/
 
-		fmt.Printf("%sRedirect occurring from %s to %s%s\n", MiscLib.ColorCyan, id, url, MiscLib.ColorReset)
+		fmt.Printf("%sRedirect occurring from [%s] to [%s]%s\n", MiscLib.ColorCyan, id, URL, MiscLib.ColorReset)
 
-		// xyzzy1008 - What about passing along headers?
-		// xyzzy1004 - config for 307 or 301 redirect.
-		// h := www.Header()
 		req.Header.Set("X-QR-Short", "Redirected By")
 		req.Header.Set("X-QR-Short-OrigURL", req.RequestURI)
-		// xyzzy1004 - TODO - add template generate redirect page with link if browser has redirect turned off.
-		// xyzzy1004 - TODO - add JS id in template to do redirect if browser loads id and runs Ecma Script.
-		http.Redirect(www, req, string(url)+"?"+qry, http.StatusTemporaryRedirect) // 307
+
+		// xyzzy2000 -- PJS -- count number of redirects
+		data.IncrementRedirectCount(id)
+
+		// Take care of URLs that arlready have prameters in them.
+		uu := string(URL)
+		sep := "?"
+		if strings.Contains(URL, "?") {
+			sep = "&"
+		}
+		if qry != "" {
+			uu += sep + qry
+		}
+
+		http.Redirect(www, req, uu, http.StatusTemporaryRedirect) // 307
 	}
 	return http.HandlerFunc(handleFunc)
 }
@@ -364,7 +398,7 @@ func HdlrList(data storage.PersistentData) http.Handler {
 				return
 			}
 		}
-		www.WriteHeader(http.StatusNotFound)
+		www.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(www, "Error: list error\n")
 	}
 	return http.HandlerFunc(handleFunc)
@@ -421,7 +455,7 @@ func HdlrBulkLoad(data storage.PersistentData) http.Handler {
 			fmt.Fprintf(gLog, "Bulk Load: %s = %s\n", updateStr, godebug.SVarI(respSet))
 			return
 		}
-		www.WriteHeader(http.StatusNotFound)
+		www.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(www, "Error: list error\n")
 	}
 	return http.HandlerFunc(handleFunc)
@@ -542,7 +576,13 @@ func getVar(name string, req *http.Request) (found bool, value string) {
 		}
 	} else if method == "GET" {
 		if str := req.URL.Query().Get(name); str != "" {
-			value = str
+			// value = str
+			var err error
+			value, err = url.QueryUnescape(str)
+			if err != nil {
+				fmt.Printf("Invalid un-escape from [%s], using raw value\n", str)
+				value = str
+			}
 			found = true
 		}
 	}
