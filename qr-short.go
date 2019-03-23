@@ -43,14 +43,14 @@ type ConfigType struct {
 	RedisConnectHost string `json:"redis_host" default:"$ENV$REDIS_HOST"`
 	RedisConnectAuth string `json:"redis_auth" default:"$ENV$REDIS_AUTH"`
 	RedisConnectPort string `json:"redis_port" default:"6379"`
-	RedisPrefix      string `default:"qr"`                      // default "qr"
-	AuthToken        string `default:"ENV$QR_SHORT_AUTH_TOKEN"` // authorize update/set of redirects
-	CountHits        bool   `default:"false"`                   // Count number of times referenced
-	DataFileDest     string `default:"./test-data"`             // Where to store data when it is passed
+	RedisPrefix      string `default:"qr"`                       // default "qr"
+	AuthToken        string `default:"$ENV$QR_SHORT_AUTH_TOKEN"` // authorize update/set of redirects
+	CountHits        bool   `default:"false"`                    // Count number of times referenced
+	DataFileDest     string `default:"./test-data"`              // Where to store data when it is passed
 	LogFileName      string `json:"log_file_name"`
 	DebugFlag        string `json:"db_flag"`
 
-	// Defauilt file for TLS setup (Shoud include path), both must be specified.
+	// Default file for TLS setup (Should include path), both must be specified.
 	// These can be over ridden on the command line.
 	TLS_crt string `json:"tls_crt" default:""`
 	TLS_key string `json:"tls_key" default:""`
@@ -60,7 +60,6 @@ var gCfg ConfigType
 var logFilePtr *os.File
 var db_flag map[string]bool
 var isTLS bool
-var ch chan string
 var wg sync.WaitGroup
 var httpServer *http.Server
 var shutdownWaitTime = time.Duration(1)
@@ -68,15 +67,12 @@ var logger *log.Logger
 
 func init() {
 	logger = log.New(os.Stdout, "", 0)
-	ch = make(chan string, 1)
 	isTLS = false
 	db_flag = make(map[string]bool)
 	db_flag["db002"] = true
 	db_flag["db-auth"] = true
 	logFilePtr = os.Stderr
 }
-
-// var Port = flag.String("port", "", "set port to listen on")
 
 var Note = flag.String("note", "", "User note")
 var Cfg = flag.String("cfg", "cfg.json", "config file, default ./cfg.json")
@@ -182,7 +178,7 @@ func main() {
 	for _, dd := range strings.Split(gCfg.DebugFlag, ",") {
 		db_flag[dd] = true
 	}
-	// SetDebugFlags(db_flag)
+	SetDebugFlags()
 	storage.SetDebug(db_flag)
 
 	if *HostPort != "" {
@@ -226,11 +222,16 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Fatal: Unable to initialize Redis storage: %s\n", err)
 			os.Exit(1)
 		}
+	} else {
+		fmt.Fprintf(os.Stderr, "Internal error >%s< should be 'file' or 'Redis'\n", gCfg.StorageSystem)
+		os.Exit(1)
 	}
 
-	// xyzxzy - AUTH /getAuth/?un=UU&pw=YY -> Auth Token / Cookie
+	// xyzzy - AUTH /getAuth/?un=UU&pw=YY -> Auth Token / Cookie
+
 	mux := http.NewServeMux()
-	mux.Handle("/api/v1/status", http.HandlerFunc(HandleStatus)) //
+	mux.Handle("/api/v1/status", http.HandlerFunc(HandleStatus))          //
+	mux.Handle("/api/v1/exit-server", http.HandlerFunc(HandleExitServer)) //
 
 	mux.Handle("/enc/", HdlrEncode(data))                 // http.../url=ToUrl					Auth Req
 	mux.Handle("/enc", HdlrEncode(data))                  // http.../url=ToUrl					Auth Req
@@ -244,19 +245,6 @@ func main() {
 	mux.Handle("/status", http.HandlerFunc(HandleStatus)) //
 	mux.Handle("/q/", HdlrRedirect(data))                 //
 	mux.Handle("/", http.FileServer(http.Dir("www")))
-	// ---- End ---- // ---- End ---- // ---- End ---- // ---- End ---- // ---- End ---- // ---- End ---- // ---- End ---- // ----
-
-	/*
-		if db11 {
-			fmt.Printf("just before ListenAndServe gCfg=%s\n", godebug.SVarI(gCfg))
-		}
-
-		// FIXME - add server name/ip to listen to.
-		err = http.ListenAndServe(":"+gCfg.Port, nil)
-		if err != nil {
-			log.Fatal(err)
-		}
-	*/
 
 	// ------------------------------------------------------------------------------
 	// Setup signal capture
@@ -270,15 +258,7 @@ func main() {
 	monClient, err7 := RedisClient()
 	fmt.Printf("err7=%v AT: %s\n", err7, godebug.LF())
 	mon := MonAliveLib.NewMonIt(func() *redis.Client { return monClient }, func(conn *redis.Client) {})
-	mon.SendPeriodicIAmAlive("ACB-Email-MS")
-
-	// ------------------------------------------------------------------------------
-	// Self kick to start
-	// ------------------------------------------------------------------------------
-	go func() {
-		time.Sleep(1) // wait 1 sec, then kick self into gear
-		ch <- "kick"  // on control-channel - send "kick"
-	}()
+	mon.SendPeriodicIAmAlive("QR-Short-MS")
 
 	// ------------------------------------------------------------------------------
 	// Setup / Run the HTTP Server.
@@ -352,7 +332,8 @@ func HandleStatus(www http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(os.Stdout, "\n%sStatus: working.  Requests Served: %d.%s\n", MiscLib.ColorGreen, nReq, MiscLib.ColorReset)
 	www.Header().Set("Content-Type", "text/html; charset=utf-8")
 	www.WriteHeader(http.StatusOK) // 401
-	fmt.Fprintf(www, "Working.  %d requests. (Version 0.0.18, Mod Date: Thu Feb  7 06:49:19 MST 2019)\n", nReq)
+	// fmt.Fprintf(www, "Working.  %d requests. (Version 0.0.18, Mod Date: Thu Feb  7 06:49:19 MST 2019)\n", nReq)
+	fmt.Fprintf(www, "Working.  Version v0.0.19 %d Requests. (Mod Date: Sat Mar 23 08:56:52 MDT 2019)\n", nReq)
 	return
 }
 
@@ -637,6 +618,9 @@ func HdlrBulkLoad(data storage.PersistentData) http.Handler {
 // CheckAuthToken looks at either a header or a cookie to determine if the user is
 // authorized.
 func CheckAuthToken(data storage.PersistentData, www http.ResponseWriter, req *http.Request) bool {
+	if db_flag["db-auth"] {
+		fmt.Printf("In CheckAuthToken: Looking for [%s]\n", gCfg.AuthToken)
+	}
 	if gCfg.AuthToken == "-none-" {
 		if db_flag["db-auth"] {
 			fmt.Fprintf(logFilePtr, "%sAuth Success - no authentication%s\n", MiscLib.ColorGreen, MiscLib.ColorReset)
@@ -677,63 +661,67 @@ func CheckAuthToken(data storage.PersistentData, www http.ResponseWriter, req *h
 	return false
 }
 
-//// SetDebugFlags convers from --debug csv,csv -> db_flag
-//func SetDebugFlags(Debug *string) {
-//	if Debug != nil && *Debug != "" {
-//		df := strings.Split(*Debug, ",")
-//		for _, dd := range df {
-//			if _, have := db_flag[dd]; have {
-//				db_flag[dd] = !db_flag[dd]
-//			} else {
-//				db_flag[dd] = true
-//			}
-//		}
-//	}
-//	if db_flag["db1"] {
-//		db1 = true
-//	}
-//	if db_flag["db2"] {
-//		db2 = true
-//	}
-//	if db_flag["db11"] {
-//		db11 = true
-//	}
-//	if db_flag["db12"] {
-//		db12 = true
-//	}
-//}
-
-//func getVar(name string, req *http.Request) (found bool, value string) {
-//	method := req.Method
-//	if method == "POST" {
-//		if str := req.PostFormValue(name); str != "" {
-//			value = str
-//			found = true
-//		}
-//	} else if method == "GET" {
-//		if str := req.URL.Query().Get(name); str != "" {
-//			// value = str
-//			var err error
-//			value, err = url.QueryUnescape(str)
-//			if err != nil {
-//				fmt.Printf("Invalid un-escape from [%s], using raw value\n", str)
-//				value = str
-//			}
-//			found = true
-//		}
-//	}
-//	if db_flag["db008"] {
-//		fmt.Fprintf(logFilePtr, "Method %s Param %s Value %s: %s\n", method, name, value, godebug.LF())
-//	}
-//	return
-//}
+// SetDebugFlags convers from db_flag values to db? Variables.
+func SetDebugFlags() {
+	if db_flag["db1"] {
+		db1 = true
+	}
+	if db_flag["db2"] {
+		db2 = true
+	}
+	if db_flag["db11"] {
+		db11 = true
+	}
+	if db_flag["db12"] {
+		db12 = true
+	}
+}
 
 // LogFile sets the output log file to an open file.  This will turn on logging of SQL statments.
 func LogFile(f *os.File) {
 	logFilePtr = f
 }
 
-// xyzzy - fix this
+// HandleExitServer - graceful server shutdown.
+func HandleExitServer(www http.ResponseWriter, req *http.Request) {
+
+	// if !IsAuthKeyValid(www, req) {
+	if !CheckAuthToken(nil, www, req) {
+		return
+	}
+	if isTLS {
+		www.Header().Add("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+	}
+	www.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	//	// fmt.Printf("AT: %s - gCfg.AuthKey = [%s]\n", godebug.LF(), gCfg.AuthKey)
+	//	found, auth_key := GetVar("auth_key", www, req)
+	//	if gCfg.AuthKey != "" {
+	//		// fmt.Printf("AT: %s - configed AuthKey [%s], found=%v ?auth_key=[%s]\n", godebug.LF(), gCfg.AuthKey, found, auth_key)
+	//		if !found || auth_key != gCfg.AuthKey {
+	//			// fmt.Printf("AT: %s\n", godebug.LF())
+	//			www.WriteHeader(http.StatusUnauthorized) // 401
+	//			return
+	//		}
+	//	}
+	//	// fmt.Printf("AT: %s\n", godebug.LF())
+
+	www.WriteHeader(http.StatusOK) // 200
+	fmt.Fprintf(www, `{"status":"success"}`+"\n")
+
+	go func() {
+		// Implement graceful exit with auth_key
+		fmt.Fprintf(os.Stderr, "\nShutting down the server... Received /exit-server?auth_key=...\n")
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownWaitTime*time.Second)
+		defer cancel()
+		err := httpServer.Shutdown(ctx)
+		if err != nil {
+			fmt.Printf("Error on shutdown: [%s]\n", err)
+		}
+	}()
+}
+
+// xyzzy - fix this -- really should be by function debug names.
 // SetDebugFlags(db_flag)
 var db1 = false
 var db2 = false

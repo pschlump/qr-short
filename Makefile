@@ -3,7 +3,8 @@
 # Philip's Class A block - dev8
 # LOCALIP=10.240.10.18
 # Philip's Class C block - dev system 1 
-LOCALIP=192.168.0.157
+# LOCALIP=192.168.0.157
+LOCALIP=127.0.0.1
 
 # -v --cookie "USER_TOKEN=Yes"
 
@@ -17,25 +18,16 @@ build_linux:
 # Primary local test
 # ---------------------------------------------------------------------------------------
 
-test: setup test1 test2 testSuccess
+test: setup test1 testSuccess
 
 setup:
 	@./kill-current.sh
 	@rm -f qr-short
 	@go build
-	@./qr-short &
+	@./qr-short -note "Test-QR-Short" &
 
 test1:
-	@mkdir -p ./out
-	@curl --header "X-Qr-Auth: `env | grep QR_SHORT_AUTH_TOKEN | sed -e 's/.*=//'`" "http://${LOCALIP}:2004/enc/?url=http://www.2c-why.com/" >out/,t1
-	@echo "" >>out/,t1
-	@curl "http://${LOCALIP}:2004/q/`cat out/,t1`" >out/,t2
-	@grep 'Redirect' out/,t2
-
-# dependent on test1
-test2:
-	@curl -L "http://${LOCALIP}:2004/q/`cat out/,t1`" >out/,t3
-	@grep '2C-Why' out/,t3
+	./test1.sh
 
 testSuccess:
 	@echo PASS
