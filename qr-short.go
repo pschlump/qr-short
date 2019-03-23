@@ -3,22 +3,30 @@ package main
 // Copyright (C) Philip Schlump 2018-2019.
 
 import (
+	"context"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
+	"os/signal"
+	"path"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 
+	"github.com/American-Certified-Brands/config-sample/ReadConfig"
 	"github.com/American-Certified-Brands/tools/qr-short/storage"
 	"github.com/pschlump/MiscLib"
-	jsonSyntaxErroLib "github.com/pschlump/check-json-syntax/lib"
+	"github.com/pschlump/filelib"
 	"github.com/pschlump/getHomeDir"
 	"github.com/pschlump/godebug"
+	MonAliveLib "github.com/pschlump/mon-alive/lib" // "github.com/pschlump/mon-alive/lib"
+	"github.com/pschlump/radix.v2/redis"
 )
 
 // xyzzy2000 Wed Mar 20 16:52:43 MDT 2019 -- PJS -- count number of redirects
@@ -29,79 +37,156 @@ import (
 
 // ConfigType is the global configuration that is read in from cfg.json
 type ConfigType struct {
-	DataDir       string   // ~/data
-	Port          string   // 2004
-	StorageSystem string   // --store file (default), --store Redis
-	RedisHost     string   // if Redis, then default 127.0.0.1
-	RedisPort     string   // if Redis, then default 6379
-	RedisAuth     string   // If auth is not used then leave empty.
-	RedisPrefix   string   // default "qr"
-	AuthToken     string   // authorize update/set of redirects
-	CountHits     bool     // Count number of times referenced
-	DebugFlags    []string // List of debug flags - set by default
-	DataFileDest  string   // Where to store data when it is passed
+	DataDir          string `default:"~/data"` // ~/data
+	HostPort         string `default:":2004"`  // 2004
+	StorageSystem    string `default:"Redis"`  // --store file (default), --store Redis
+	RedisConnectHost string `json:"redis_host" default:"$ENV$REDIS_HOST"`
+	RedisConnectAuth string `json:"redis_auth" default:"$ENV$REDIS_AUTH"`
+	RedisConnectPort string `json:"redis_port" default:"6379"`
+	RedisPrefix      string `default:"qr"`                      // default "qr"
+	AuthToken        string `default:"ENV$QR_SHORT_AUTH_TOKEN"` // authorize update/set of redirects
+	CountHits        bool   `default:"false"`                   // Count number of times referenced
+	DataFileDest     string `default:"./test-data"`             // Where to store data when it is passed
+	LogFileName      string `json:"log_file_name"`
+	DebugFlag        string `json:"db_flag"`
+
+	// Defauilt file for TLS setup (Shoud include path), both must be specified.
+	// These can be over ridden on the command line.
+	TLS_crt string `json:"tls_crt" default:""`
+	TLS_key string `json:"tls_key" default:""`
 }
 
 var gCfg ConfigType
-var gLog *os.File
-var gDebug map[string]bool
+var logFilePtr *os.File
+var db_flag map[string]bool
+var isTLS bool
+var ch chan string
+var wg sync.WaitGroup
+var httpServer *http.Server
+var shutdownWaitTime = time.Duration(1)
+var logger *log.Logger
 
 func init() {
-	gDebug = make(map[string]bool)
-	gCfg = ConfigType{
-		DataDir:       "~/data",
-		Port:          "2004",
-		StorageSystem: "file",
-		RedisHost:     "127.0.0.1",
-		RedisPort:     "6379",
-		RedisPrefix:   "qr",
-		AuthToken:     "ENV$QR_SHORT_AUTH_TOKEN",
-		CountHits:     false,
-		DebugFlags:    make([]string, 0, 10),
-		DataFileDest:  "/Users/corwin/go/src/github.com/American-Certified-Brands/tools/qr-short/test-data",
-	}
-	gDebug["db002"] = true
-	gDebug["db-auth"] = true
-	gLog = os.Stderr
+	logger = log.New(os.Stdout, "", 0)
+	ch = make(chan string, 1)
+	isTLS = false
+	db_flag = make(map[string]bool)
+	db_flag["db002"] = true
+	db_flag["db-auth"] = true
+	logFilePtr = os.Stderr
 }
+
+// var Port = flag.String("port", "", "set port to listen on")
 
 var Note = flag.String("note", "", "User note")
 var Cfg = flag.String("cfg", "cfg.json", "config file, default ./cfg.json")
-var Port = flag.String("port", "", "set port to listen on")
 var DataDir = flag.String("datadir", "", "set directory to put files in if storage is 'file'")
 var MaxCPU = flag.Bool("maxcpu", false, "set max number of CPUs.")
 var Store = flag.String("store", "", "which storage system to use, file, Redis.")
-var Debug = flag.String("debug", "", "comma list of flags")
 var AuthToken = flag.String("authtoken", "", "auth token for update/set")
+var TLS_crt = flag.String("tls_crt", "", "TLS Signed Publick Key")
+var TLS_key = flag.String("tls_key", "", "TLS Signed Private Key")
+var DbFlag = flag.String("db_flag", "", "Additional Debug Flags")
+var HostPort = flag.String("hostport", ":2004", "Host/Port to listen on")
 
 func main() {
 
 	var err error
 
-	flag.Parse()
+	flag.Parse() // Parse CLI arguments to this, --cfg <name>.json
+
 	fns := flag.Args()
-	if len(fns) > 0 {
-		// Copy to new version !
+	if len(fns) != 0 {
 		fmt.Printf("Usage: qr-short [--cfg fn] [--port ####] [--datadir path] [--maxcpu] [--store file|Redis] [--debug flag,flag...] [--authtoken token]\n")
 		os.Exit(1)
 	}
 
-	if Cfg != nil && *Cfg != "" {
-		gCfg, err = ReadConfig(*Cfg, gCfg)
+	if Cfg == nil {
+		fmt.Printf("--cfg is a required parameter\n")
+		os.Exit(1)
+	}
+
+	// ------------------------------------------------------------------------------
+	// Read in Configuraiton
+	// ------------------------------------------------------------------------------
+	err = ReadConfig.ReadFile(*Cfg, &gCfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to read confguration: %s error %s\n", *Cfg, err)
+		os.Exit(1)
+	}
+
+	// ------------------------------------------------------------------------------
+	// Logging File
+	// ------------------------------------------------------------------------------
+	if gCfg.LogFileName != "" {
+		bn := path.Dir(gCfg.LogFileName)
+		os.MkdirAll(bn, 0755)
+		fp, err := filelib.Fopen(gCfg.LogFileName, "a")
 		if err != nil {
-			os.Exit(1)
+			log.Fatalf("log file confiured, but unable to open, file[%s] error[%s]\n", gCfg.LogFileName, err)
+		}
+		LogFile(fp)
+	}
+
+	// ------------------------------------------------------------------------------
+	// TLS parameter check / setup
+	// ------------------------------------------------------------------------------
+	if *TLS_crt == "" && gCfg.TLS_crt != "" {
+		TLS_crt = &gCfg.TLS_crt
+	}
+	if *TLS_key == "" && gCfg.TLS_key != "" {
+		TLS_key = &gCfg.TLS_key
+	}
+
+	if *TLS_crt != "" && *TLS_key == "" {
+		log.Fatalf("Must supply both .crt and .key for TLS to be turned on - fatal error.")
+	} else if *TLS_crt == "" && *TLS_key != "" {
+		log.Fatalf("Must supply both .crt and .key for TLS to be turned on - fatal error.")
+	} else if *TLS_crt != "" && *TLS_key != "" {
+		if !filelib.Exists(*TLS_crt) {
+			log.Fatalf("Missing file ->%s<-\n", *TLS_crt)
+		}
+		if !filelib.Exists(*TLS_key) {
+			log.Fatalf("Missing file ->%s<-\n", *TLS_key)
+		}
+		isTLS = true
+	}
+
+	// ------------------------------------------------------------------------------
+	// Debug Flag Processing
+	// ------------------------------------------------------------------------------
+	if gCfg.DebugFlag != "" {
+		ss := strings.Split(gCfg.DebugFlag, ",")
+		// fmt.Printf("gCfg.DebugFlag ->%s<-\n", gCfg.DebugFlag)
+		for _, sx := range ss {
+			// fmt.Printf("Setting ->%s<-\n", sx)
+			db_flag[sx] = true
+		}
+	}
+	if *DbFlag != "" {
+		ss := strings.Split(*DbFlag, ",")
+		// fmt.Printf("gCfg.DebugFlag ->%s<-\n", gCfg.DebugFlag)
+		for _, sx := range ss {
+			// fmt.Printf("Setting ->%s<-\n", sx)
+			db_flag[sx] = true
+		}
+	}
+	if db_flag["dump-db-flag"] {
+		fmt.Fprintf(os.Stderr, "%sDB Flags Enabled Are:%s\n", MiscLib.ColorGreen, MiscLib.ColorReset)
+		for x := range db_flag {
+			fmt.Fprintf(os.Stderr, "%s\t%s%s\n", MiscLib.ColorGreen, x, MiscLib.ColorReset)
 		}
 	}
 
 	// ---- Copy to new verion ---- // ---- Copy to new verion ---- // ---- Copy to new verion ---- // ---- Copy to new verion ----
-	for _, dd := range gCfg.DebugFlags {
-		gDebug[dd] = true
+	for _, dd := range strings.Split(gCfg.DebugFlag, ",") {
+		db_flag[dd] = true
 	}
-	SetDebugFlags(Debug)
-	storage.SetDebug(gDebug)
+	// SetDebugFlags(db_flag)
+	storage.SetDebug(db_flag)
 
-	if *Port != "" {
-		gCfg.Port = *Port
+	if *HostPort != "" {
+		gCfg.HostPort = *HostPort
 	}
 	if *DataDir != "" {
 		gCfg.DataDir = *DataDir
@@ -127,7 +212,7 @@ func main() {
 	var data storage.PersistentData
 
 	if gCfg.StorageSystem == "file" {
-		data, err = storage.NewFilesystem(getHomeDir.MustExpand(gCfg.DataDir), gLog)
+		data, err = storage.NewFilesystem(getHomeDir.MustExpand(gCfg.DataDir), logFilePtr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Fatal: Unable to initialize file system storage: %s\n", err)
 			os.Exit(1)
@@ -136,7 +221,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Warning: Unable to count hits with file system storage -- not implemented.\n")
 		}
 	} else if gCfg.StorageSystem == "Redis" {
-		data, err = storage.NewRedisStore(gCfg.RedisHost, gCfg.RedisPort, gCfg.RedisAuth, gCfg.RedisPrefix, gCfg.CountHits, gLog)
+		data, err = storage.NewRedisStore(gCfg.RedisConnectHost, gCfg.RedisConnectPort, gCfg.RedisConnectAuth, gCfg.RedisPrefix, gCfg.CountHits, logFilePtr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Fatal: Unable to initialize Redis storage: %s\n", err)
 			os.Exit(1)
@@ -144,31 +229,119 @@ func main() {
 	}
 
 	// xyzxzy - AUTH /getAuth/?un=UU&pw=YY -> Auth Token / Cookie
+	mux := http.NewServeMux()
+	mux.Handle("/api/v1/status", http.HandlerFunc(HandleStatus)) //
 
-	http.Handle("/enc/", HdlrEncode(data))                 // http.../url=ToUrl					Auth Req
-	http.Handle("/enc", HdlrEncode(data))                  // http.../url=ToUrl					Auth Req
-	http.Handle("/upd/", HdlrUpdate(data))                 // http.../url=ToUrl&id=Number		Auth Req
-	http.Handle("/upd", HdlrUpdate(data))                  // http.../url=ToUrl&id=Number		Auth Req
-	http.Handle("/dec/", HdlrDecode(data))                 // http.../id=Number
-	http.Handle("/dec", HdlrDecode(data))                  // http.../id=Number
-	http.Handle("/list/", HdlrList(data))                  // http...?beg=NUmber&end=Number		Auth Req.
-	http.Handle("/list", HdlrList(data))                   // http...?beg=NUmber&end=Number		Auth Req.
-	http.Handle("/bulkLoad", HdlrBulkLoad(data))           //
-	http.Handle("/status", http.HandlerFunc(HandleStatus)) //
-	http.Handle("/q/", HdlrRedirect(data))                 //
-	fs := http.FileServer(http.Dir("www"))
-	http.Handle("/", fs)
+	mux.Handle("/enc/", HdlrEncode(data))                 // http.../url=ToUrl					Auth Req
+	mux.Handle("/enc", HdlrEncode(data))                  // http.../url=ToUrl					Auth Req
+	mux.Handle("/upd/", HdlrUpdate(data))                 // http.../url=ToUrl&id=Number		Auth Req
+	mux.Handle("/upd", HdlrUpdate(data))                  // http.../url=ToUrl&id=Number		Auth Req
+	mux.Handle("/dec/", HdlrDecode(data))                 // http.../id=Number
+	mux.Handle("/dec", HdlrDecode(data))                  // http.../id=Number
+	mux.Handle("/list/", HdlrList(data))                  // http...?beg=NUmber&end=Number		Auth Req.
+	mux.Handle("/list", HdlrList(data))                   // http...?beg=NUmber&end=Number		Auth Req.
+	mux.Handle("/bulkLoad", HdlrBulkLoad(data))           //
+	mux.Handle("/status", http.HandlerFunc(HandleStatus)) //
+	mux.Handle("/q/", HdlrRedirect(data))                 //
+	mux.Handle("/", http.FileServer(http.Dir("www")))
 	// ---- End ---- // ---- End ---- // ---- End ---- // ---- End ---- // ---- End ---- // ---- End ---- // ---- End ---- // ----
 
-	if db11 {
-		fmt.Printf("just before ListenAndServe gCfg=%s\n", godebug.SVarI(gCfg))
+	/*
+		if db11 {
+			fmt.Printf("just before ListenAndServe gCfg=%s\n", godebug.SVarI(gCfg))
+		}
+
+		// FIXME - add server name/ip to listen to.
+		err = http.ListenAndServe(":"+gCfg.Port, nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+	*/
+
+	// ------------------------------------------------------------------------------
+	// Setup signal capture
+	// ------------------------------------------------------------------------------
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt)
+
+	// ------------------------------------------------------------------------------
+	// Live Monitor Setup
+	// ------------------------------------------------------------------------------
+	monClient, err7 := RedisClient()
+	fmt.Printf("err7=%v AT: %s\n", err7, godebug.LF())
+	mon := MonAliveLib.NewMonIt(func() *redis.Client { return monClient }, func(conn *redis.Client) {})
+	mon.SendPeriodicIAmAlive("ACB-Email-MS")
+
+	// ------------------------------------------------------------------------------
+	// Self kick to start
+	// ------------------------------------------------------------------------------
+	go func() {
+		time.Sleep(1) // wait 1 sec, then kick self into gear
+		ch <- "kick"  // on control-channel - send "kick"
+	}()
+
+	// ------------------------------------------------------------------------------
+	// Setup / Run the HTTP Server.
+	// ------------------------------------------------------------------------------
+	if isTLS {
+		cfg := &tls.Config{
+			MinVersion:               tls.VersionTLS12,
+			CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
+			PreferServerCipherSuites: true,
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+				tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+			},
+		}
+		httpServer = &http.Server{
+			Addr:         *HostPort,
+			Handler:      mux,
+			TLSConfig:    cfg,
+			TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),
+		}
+	} else {
+		httpServer = &http.Server{
+			Addr:    *HostPort,
+			Handler: mux,
+		}
 	}
 
-	// FIXME - add server name/ip to listen to.
-	err = http.ListenAndServe(":"+gCfg.Port, nil)
-	if err != nil {
-		log.Fatal(err)
+	go func() {
+		wg.Add(1)
+		defer wg.Done()
+		if isTLS {
+			fmt.Fprintf(os.Stderr, "%sListening on https://%s%s\n", MiscLib.ColorGreen, *HostPort, MiscLib.ColorReset)
+			if err := httpServer.ListenAndServeTLS(*TLS_crt, *TLS_key); err != nil {
+				logger.Fatal(err)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "%sListening on http://%s%s\n", MiscLib.ColorGreen, *HostPort, MiscLib.ColorReset)
+			if err := httpServer.ListenAndServe(); err != nil {
+				logger.Fatal(err)
+			}
+		}
+	}()
+
+	// ------------------------------------------------------------------------------
+	// Catch signals from [Contro-C]
+	// ------------------------------------------------------------------------------
+	select {
+	case <-stop:
+		fmt.Fprintf(os.Stderr, "\nShutting down the server... Received OS Signal...\n")
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownWaitTime*time.Second)
+		defer cancel()
+		err := httpServer.Shutdown(ctx)
+		if err != nil {
+			fmt.Printf("Error on shutdown: [%s]\n", err)
+		}
 	}
+
+	// ------------------------------------------------------------------------------
+	// Wait for HTTP server to exit.
+	// ------------------------------------------------------------------------------
+	wg.Wait()
 }
 
 var nReq = 0
@@ -195,13 +368,13 @@ func HdlrEncode(data storage.PersistentData) http.Handler {
 			fmt.Fprintf(www, "Error: not authorized.\n")
 			return
 		}
-		found, urlStr := getVar("url", req)
-		dataFound, dataStr := getVar("data", req)
+		found, urlStr := GetVar("url", www, req)
+		dataFound, dataStr := GetVar("data", www, req)
 		if found {
 			enc, err := data.Insert(urlStr)
 			if err != nil {
 				www.WriteHeader(http.StatusInternalServerError) // is this the correct error to return at this point?
-				fmt.Fprintf(gLog, "Encode: list error %s, %s\n", err, godebug.LF())
+				fmt.Fprintf(logFilePtr, "Encode: list error %s, %s\n", err, godebug.LF())
 				fmt.Fprintf(www, "Error: encode error: %s\n", err)
 				os.Exit(1)
 				return
@@ -210,10 +383,10 @@ func HdlrEncode(data storage.PersistentData) http.Handler {
 				fn := fmt.Sprintf("%s/%s", gCfg.DataFileDest, enc)
 				ioutil.WriteFile(fn, []byte(dataStr+"\n"), 0644)
 				fmt.Fprintf(os.Stderr, "Data Written To: %s = %s\n", fn, dataStr) // PJS test
-				fmt.Fprintf(gLog, "Data Written To: %s = %s\n", fn, dataStr)
+				fmt.Fprintf(logFilePtr, "Data Written To: %s = %s\n", fn, dataStr)
 			}
 			fmt.Fprintf(www, "%s", enc)
-			fmt.Fprintf(gLog, "Encode: %s = %s\n", urlStr, enc)
+			fmt.Fprintf(logFilePtr, "Encode: %s = %s\n", urlStr, enc)
 			return
 		}
 		www.WriteHeader(http.StatusBadRequest)
@@ -236,14 +409,14 @@ func HdlrUpdate(data storage.PersistentData) http.Handler {
 			return
 		}
 
-		foundUrl, urlStr := getVar("url", req)
-		foundId, id := getVar("id", req)
-		dataFound, dataStr := getVar("data", req)
+		foundUrl, urlStr := GetVar("url", www, req)
+		foundId, id := GetVar("id", www, req)
+		dataFound, dataStr := GetVar("data", www, req)
 		if foundUrl && foundId {
 			enc, err := data.Update(urlStr, id)
 			if err != nil {
 				www.WriteHeader(http.StatusInternalServerError) // is this the correct error to return at this point?
-				fmt.Fprintf(gLog, "Update: list error %s, %s\n", err, godebug.LF())
+				fmt.Fprintf(logFilePtr, "Update: list error %s, %s\n", err, godebug.LF())
 				fmt.Fprintf(www, "Error: update error: %s\n", err)
 				os.Exit(1)
 				return
@@ -252,10 +425,10 @@ func HdlrUpdate(data storage.PersistentData) http.Handler {
 				fn := fmt.Sprintf("%s/%s", gCfg.DataFileDest, enc)
 				ioutil.WriteFile(fn, []byte(dataStr+"\n"), 0644)
 				fmt.Fprintf(os.Stderr, "Data Written To: %s = %s\n", fn, dataStr) // PJS test
-				fmt.Fprintf(gLog, "Data Written To: %s = %s\n", fn, dataStr)
+				fmt.Fprintf(logFilePtr, "Data Written To: %s = %s\n", fn, dataStr)
 			}
 			fmt.Fprintf(www, "%s", enc)
-			fmt.Fprintf(gLog, "Update Encode: %s = %s\n", urlStr, enc)
+			fmt.Fprintf(logFilePtr, "Update Encode: %s = %s\n", urlStr, enc)
 			return
 		}
 
@@ -362,27 +535,27 @@ func HdlrList(data storage.PersistentData) http.Handler {
 		if db1 {
 			fmt.Printf("List: %s, %s\n", godebug.SVarI(req), godebug.LF())
 		}
-		if gDebug["db002"] {
-			fmt.Fprintf(gLog, "In List at top: %s, %s\n", req.URL.Query(), godebug.LF())
+		if db_flag["db002"] {
+			fmt.Fprintf(logFilePtr, "In List at top: %s, %s\n", req.URL.Query(), godebug.LF())
 		}
 		if !CheckAuthToken(data, www, req) {
 			www.WriteHeader(http.StatusUnauthorized) // 401
-			fmt.Fprintf(gLog, "List: not authorized, %s\n", godebug.LF())
+			fmt.Fprintf(logFilePtr, "List: not authorized, %s\n", godebug.LF())
 			fmt.Fprintf(www, "Error: not authorized.\n")
 			return
 		}
-		if gDebug["db002"] {
-			fmt.Fprintf(gLog, "GET params are: %s, %s\n", req.URL.Query(), godebug.LF())
+		if db_flag["db002"] {
+			fmt.Fprintf(logFilePtr, "GET params are: %s, %s\n", req.URL.Query(), godebug.LF())
 		}
 		if begStr := req.URL.Query().Get("beg"); begStr != "" {
 			if endStr := req.URL.Query().Get("end"); endStr != "" {
-				if gDebug["db002"] {
-					fmt.Fprintf(gLog, "have big/end: %s, %s\n", req.URL.Query(), godebug.LF())
+				if db_flag["db002"] {
+					fmt.Fprintf(logFilePtr, "have big/end: %s, %s\n", req.URL.Query(), godebug.LF())
 				}
 				data, err := data.List(begStr, endStr)
 				if err != nil {
 					www.WriteHeader(http.StatusInternalServerError) // is this the correct error to return at this point?
-					fmt.Fprintf(gLog, "List: list error %s, %s\n", err, godebug.LF())
+					fmt.Fprintf(logFilePtr, "List: list error %s, %s\n", err, godebug.LF())
 					fmt.Fprintf(www, "Error: list error: %s\n", err)
 					return
 				}
@@ -392,8 +565,8 @@ func HdlrList(data storage.PersistentData) http.Handler {
 				www.Header().Set("Content-Type", "application/json")
 
 				fmt.Fprintf(www, "%s", json)
-				if gDebug["db003"] {
-					fmt.Fprintf(gLog, "List: %s ... %s, data = %s\n", begStr, endStr, json)
+				if db_flag["db003"] {
+					fmt.Fprintf(logFilePtr, "List: %s ... %s, data = %s\n", begStr, endStr, json)
 				}
 				return
 			}
@@ -413,7 +586,7 @@ func HdlrBulkLoad(data storage.PersistentData) http.Handler {
 		}
 		if !CheckAuthToken(data, www, req) {
 			www.WriteHeader(http.StatusUnauthorized) // 401
-			fmt.Fprintf(gLog, "BulkLoad: not authorized, %s\n", godebug.LF())
+			fmt.Fprintf(logFilePtr, "BulkLoad: not authorized, %s\n", godebug.LF())
 			fmt.Fprintf(www, "Error: not authorized.\n")
 			return
 		}
@@ -426,7 +599,7 @@ func HdlrBulkLoad(data storage.PersistentData) http.Handler {
 		}
 		var respSet []storage.UpdateRespItem
 
-		foundUpdate, updateStr := getVar("update", req)
+		foundUpdate, updateStr := GetVar("update", www, req)
 		if foundUpdate {
 			var update UpdateData
 			if db2 {
@@ -435,7 +608,7 @@ func HdlrBulkLoad(data storage.PersistentData) http.Handler {
 			err := json.Unmarshal([]byte(updateStr), &update)
 			if err != nil {
 				www.WriteHeader(http.StatusInternalServerError) // 500 is this the correct error to return at this point?
-				fmt.Fprintf(gLog, "BulkLoad: parse error: %s, %s, %s\n", update, err, godebug.LF())
+				fmt.Fprintf(logFilePtr, "BulkLoad: parse error: %s, %s, %s\n", update, err, godebug.LF())
 				fmt.Fprintf(www, "Error: parse error: %s\n", err)
 				return
 			}
@@ -452,7 +625,7 @@ func HdlrBulkLoad(data storage.PersistentData) http.Handler {
 			www.Header().Set("Length", fmt.Sprintf("%d", len(resp)))
 
 			fmt.Fprintf(www, "%s", resp)
-			fmt.Fprintf(gLog, "Bulk Load: %s = %s\n", updateStr, godebug.SVarI(respSet))
+			fmt.Fprintf(logFilePtr, "Bulk Load: %s = %s\n", updateStr, godebug.SVarI(respSet))
 			return
 		}
 		www.WriteHeader(http.StatusBadRequest)
@@ -465,21 +638,21 @@ func HdlrBulkLoad(data storage.PersistentData) http.Handler {
 // authorized.
 func CheckAuthToken(data storage.PersistentData, www http.ResponseWriter, req *http.Request) bool {
 	if gCfg.AuthToken == "-none-" {
-		if gDebug["db-auth"] {
-			fmt.Fprintf(gLog, "%sAuth Success - no authentication%s\n", MiscLib.ColorGreen, MiscLib.ColorReset)
+		if db_flag["db-auth"] {
+			fmt.Fprintf(logFilePtr, "%sAuth Success - no authentication%s\n", MiscLib.ColorGreen, MiscLib.ColorReset)
 		}
 		return true
 	}
 
 	// look for cookie
 	cookie, err := req.Cookie("Qr-Auth")
-	if gDebug["db-auth"] {
+	if db_flag["db-auth"] {
 		fmt.Printf("Cookie: %s\n", godebug.SVarI(cookie))
 	}
 	if err == nil {
 		if cookie.Value == gCfg.AuthToken {
-			if gDebug["db-auth"] {
-				fmt.Fprintf(gLog, "%sAuth Success - cookie%s\n", MiscLib.ColorGreen, MiscLib.ColorReset)
+			if db_flag["db-auth"] {
+				fmt.Fprintf(logFilePtr, "%sAuth Success - cookie%s\n", MiscLib.ColorGreen, MiscLib.ColorReset)
 			}
 			return true
 		}
@@ -488,110 +661,80 @@ func CheckAuthToken(data storage.PersistentData, www http.ResponseWriter, req *h
 	// look for header
 	// ua := r.Header.Get("User-Agent")
 	auth := req.Header.Get("X-Qr-Auth")
-	if gDebug["db-auth"] {
+	if db_flag["db-auth"] {
 		fmt.Printf("Header: %s\n", godebug.SVarI(auth))
 	}
 	if auth == gCfg.AuthToken {
-		if gDebug["db-auth"] {
-			fmt.Fprintf(gLog, "%sAuth Success - header%s\n", MiscLib.ColorGreen, MiscLib.ColorReset)
+		if db_flag["db-auth"] {
+			fmt.Fprintf(logFilePtr, "%sAuth Success - header%s\n", MiscLib.ColorGreen, MiscLib.ColorReset)
 		}
 		return true
 	}
 
-	if gDebug["db-auth"] {
-		fmt.Fprintf(gLog, "%sAuth Fail%s\n", MiscLib.ColorRed, MiscLib.ColorReset)
+	if db_flag["db-auth"] {
+		fmt.Fprintf(logFilePtr, "%sAuth Fail%s\n", MiscLib.ColorRed, MiscLib.ColorReset)
 	}
 	return false
 }
 
-// ReadConfig reads in the configuration file and substitutes environment
-// variables for passwords/auth-tokens.
-func ReadConfig(fn string, in ConfigType) (rv ConfigType, err error) {
-	rv = in
-	buf, err := ioutil.ReadFile(fn)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Fatal: Unable to open %s for configuration, error=%s\n", fn, err)
-		os.Exit(1)
-	}
-	err = json.Unmarshal(buf, &rv)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Fatal: Unable to parse %s for configuration, error=%s\n", fn, err)
-		es := jsonSyntaxErroLib.GenerateSyntaxError(string(buf), err)
-		fmt.Fprintf(os.Stderr, "%s%s%s\n", MiscLib.ColorYellow, es, MiscLib.ColorReset)
-		os.Exit(1)
-	}
+//// SetDebugFlags convers from --debug csv,csv -> db_flag
+//func SetDebugFlags(Debug *string) {
+//	if Debug != nil && *Debug != "" {
+//		df := strings.Split(*Debug, ",")
+//		for _, dd := range df {
+//			if _, have := db_flag[dd]; have {
+//				db_flag[dd] = !db_flag[dd]
+//			} else {
+//				db_flag[dd] = true
+//			}
+//		}
+//	}
+//	if db_flag["db1"] {
+//		db1 = true
+//	}
+//	if db_flag["db2"] {
+//		db2 = true
+//	}
+//	if db_flag["db11"] {
+//		db11 = true
+//	}
+//	if db_flag["db12"] {
+//		db12 = true
+//	}
+//}
 
-	if strings.HasPrefix(rv.RedisAuth, "ENV$") {
-		name := rv.RedisAuth[4:]
-		val := os.Getenv(name)
-		rv.RedisAuth = val
-	}
+//func getVar(name string, req *http.Request) (found bool, value string) {
+//	method := req.Method
+//	if method == "POST" {
+//		if str := req.PostFormValue(name); str != "" {
+//			value = str
+//			found = true
+//		}
+//	} else if method == "GET" {
+//		if str := req.URL.Query().Get(name); str != "" {
+//			// value = str
+//			var err error
+//			value, err = url.QueryUnescape(str)
+//			if err != nil {
+//				fmt.Printf("Invalid un-escape from [%s], using raw value\n", str)
+//				value = str
+//			}
+//			found = true
+//		}
+//	}
+//	if db_flag["db008"] {
+//		fmt.Fprintf(logFilePtr, "Method %s Param %s Value %s: %s\n", method, name, value, godebug.LF())
+//	}
+//	return
+//}
 
-	// AuthToken:     "ENV$QR_SHORT_AUTH_TOKEN"
-	if strings.HasPrefix(rv.AuthToken, "ENV$") {
-		name := rv.AuthToken[4:]
-		val := os.Getenv(name)
-		rv.AuthToken = val
-	}
-
-	if db11 {
-		fmt.Printf("rv=%s, %s\n", godebug.SVarI(rv), godebug.LF())
-	}
-
-	return rv, nil
+// LogFile sets the output log file to an open file.  This will turn on logging of SQL statments.
+func LogFile(f *os.File) {
+	logFilePtr = f
 }
 
-// SetDebugFlags convers from --debug csv,csv -> gDebug
-func SetDebugFlags(Debug *string) {
-	if Debug != nil && *Debug != "" {
-		df := strings.Split(*Debug, ",")
-		for _, dd := range df {
-			if _, have := gDebug[dd]; have {
-				gDebug[dd] = !gDebug[dd]
-			} else {
-				gDebug[dd] = true
-			}
-		}
-	}
-	if gDebug["db1"] {
-		db1 = true
-	}
-	if gDebug["db2"] {
-		db2 = true
-	}
-	if gDebug["db11"] {
-		db11 = true
-	}
-	if gDebug["db12"] {
-		db12 = true
-	}
-}
-
-func getVar(name string, req *http.Request) (found bool, value string) {
-	method := req.Method
-	if method == "POST" {
-		if str := req.PostFormValue(name); str != "" {
-			value = str
-			found = true
-		}
-	} else if method == "GET" {
-		if str := req.URL.Query().Get(name); str != "" {
-			// value = str
-			var err error
-			value, err = url.QueryUnescape(str)
-			if err != nil {
-				fmt.Printf("Invalid un-escape from [%s], using raw value\n", str)
-				value = str
-			}
-			found = true
-		}
-	}
-	if gDebug["db008"] {
-		fmt.Fprintf(gLog, "Method %s Param %s Value %s: %s\n", method, name, value, godebug.LF())
-	}
-	return
-}
-
+// xyzzy - fix this
+// SetDebugFlags(db_flag)
 var db1 = false
 var db2 = false
 var db11 = false
