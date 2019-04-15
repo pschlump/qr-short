@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/American-Certified-Brands/config-sample/ReadConfig"
+	"github.com/American-Certified-Brands/tools/GetVar"
 	"github.com/American-Certified-Brands/tools/qr-short/storage"
 	"github.com/pschlump/MiscLib"
 	"github.com/pschlump/filelib"
@@ -76,6 +77,7 @@ func init() {
 
 var Note = flag.String("note", "", "User note")
 var Cfg = flag.String("cfg", "cfg.json", "config file, default ./cfg.json")
+var Cli = flag.String("cli", "", "Run as a CLI command intead of a server")
 var DataDir = flag.String("datadir", "", "set directory to put files in if storage is 'file'")
 var MaxCPU = flag.Bool("maxcpu", false, "set max number of CPUs.")
 var Store = flag.String("store", "", "which storage system to use, file, Redis.")
@@ -92,7 +94,9 @@ func main() {
 	flag.Parse() // Parse CLI arguments to this, --cfg <name>.json
 
 	fns := flag.Args()
-	if len(fns) != 0 {
+	if *Cli != "" {
+		GetVar.SetCliOpts(Cli, fns)
+	} else if len(fns) != 0 {
 		fmt.Printf("Usage: qr-short [--cfg fn] [--port ####] [--datadir path] [--maxcpu] [--store file|Redis] [--debug flag,flag...] [--authtoken token]\n")
 		os.Exit(1)
 	}
@@ -173,6 +177,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "%s\t%s%s\n", MiscLib.ColorGreen, x, MiscLib.ColorReset)
 		}
 	}
+	GetVar.SetDbFlag(db_flag)
 
 	// ---- Copy to new verion ---- // ---- Copy to new verion ---- // ---- Copy to new verion ---- // ---- Copy to new verion ----
 	for _, dd := range strings.Split(gCfg.DebugFlag, ",") {
@@ -349,8 +354,8 @@ func HdlrEncode(data storage.PersistentData) http.Handler {
 			fmt.Fprintf(www, "Error: not authorized.\n")
 			return
 		}
-		found, urlStr := GetVar("url", www, req)
-		dataFound, dataStr := GetVar("data", www, req)
+		found, urlStr := GetVar.GetVar("url", www, req)
+		dataFound, dataStr := GetVar.GetVar("data", www, req)
 		if found {
 			enc, err := data.Insert(urlStr)
 			if err != nil {
@@ -390,9 +395,9 @@ func HdlrUpdate(data storage.PersistentData) http.Handler {
 			return
 		}
 
-		foundUrl, urlStr := GetVar("url", www, req)
-		foundId, id := GetVar("id", www, req)
-		dataFound, dataStr := GetVar("data", www, req)
+		foundUrl, urlStr := GetVar.GetVar("url", www, req)
+		foundId, id := GetVar.GetVar("id", www, req)
+		dataFound, dataStr := GetVar.GetVar("data", www, req)
 		if foundUrl && foundId {
 			enc, err := data.Update(urlStr, id)
 			if err != nil {
@@ -580,7 +585,7 @@ func HdlrBulkLoad(data storage.PersistentData) http.Handler {
 		}
 		var respSet []storage.UpdateRespItem
 
-		foundUpdate, updateStr := GetVar("update", www, req)
+		foundUpdate, updateStr := GetVar.GetVar("update", www, req)
 		if foundUpdate {
 			var update UpdateData
 			if db2 {
@@ -655,7 +660,7 @@ func CheckAuthToken(data storage.PersistentData, www http.ResponseWriter, req *h
 		return true
 	}
 
-	auth_key_found, auth_key := GetVar("auth_key", www, req)
+	auth_key_found, auth_key := GetVar.GetVar("auth_key", www, req)
 	if db_flag["db-auth"] {
 		fmt.Printf("Variable: %s\n", auth_key)
 	}
@@ -706,7 +711,7 @@ func HandleExitServer(www http.ResponseWriter, req *http.Request) {
 	www.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	//	// fmt.Printf("AT: %s - gCfg.AuthKey = [%s]\n", godebug.LF(), gCfg.AuthKey)
-	//	found, auth_key := GetVar("auth_key", www, req)
+	//	found, auth_key := GetVar.GetVar("auth_key", www, req)
 	//	if gCfg.AuthKey != "" {
 	//		// fmt.Printf("AT: %s - configed AuthKey [%s], found=%v ?auth_key=[%s]\n", godebug.LF(), gCfg.AuthKey, found, auth_key)
 	//		if !found || auth_key != gCfg.AuthKey {
