@@ -21,6 +21,7 @@ import (
 
 	"github.com/American-Certified-Brands/config-sample/ReadConfig"
 	"github.com/American-Certified-Brands/tools/GetVar"
+	"github.com/American-Certified-Brands/tools/lms"
 	"github.com/American-Certified-Brands/tools/qr-short/storage"
 	"github.com/pschlump/MiscLib"
 	"github.com/pschlump/filelib"
@@ -38,26 +39,28 @@ import (
 
 // ConfigType is the global configuration that is read in from cfg.json
 type ConfigType struct {
-	DataDir          string `default:"~/data"` // ~/data
-	HostPort         string `default:":2004"`  // 2004
-	StorageSystem    string `default:"Redis"`  // --store file (default), --store Redis
-	RedisConnectHost string `json:"redis_host" default:"$ENV$REDIS_HOST"`
-	RedisConnectAuth string `json:"redis_auth" default:"$ENV$REDIS_AUTH"`
-	RedisConnectPort string `json:"redis_port" default:"6379"`
-	RedisPrefix      string `default:"qr"`                       // default "qr"
-	AuthToken        string `default:"$ENV$QR_SHORT_AUTH_TOKEN"` // authorize update/set of redirects
-	CountHits        bool   `default:"false"`                    // Count number of times referenced
-	DataFileDest     string `default:"./test-data"`              // Where to store data when it is passed
-	LogFileName      string `json:"log_file_name"`
-	DebugFlag        string `json:"db_flag"`
+	lms.BaseConfigType
+	DataDir       string `default:"~/data"` // ~/data
+	HostPort      string `default:":2004"`  // 2004
+	StorageSystem string `default:"Redis"`  // --store file (default), --store Redis
+	//	RedisConnectHost string `json:"redis_host" default:"$ENV$REDIS_HOST"`
+	//	RedisConnectAuth string `json:"redis_auth" default:"$ENV$REDIS_AUTH"`
+	//	RedisConnectPort string `json:"redis_port" default:"6379"`
+	RedisPrefix  string `default:"qr"`                       // default "qr"
+	AuthToken    string `default:"$ENV$QR_SHORT_AUTH_TOKEN"` // authorize update/set of redirects
+	CountHits    bool   `default:"false"`                    // Count number of times referenced
+	DataFileDest string `default:"./test-data"`              // Where to store data when it is passed
+	//	LogFileName  string `json:"log_file_name"`
+	//	DebugFlag    string `json:"db_flag"`
 
 	// Default file for TLS setup (Should include path), both must be specified.
 	// These can be over ridden on the command line.
-	TLS_crt string `json:"tls_crt" default:""`
-	TLS_key string `json:"tls_key" default:""`
+	//	TLS_crt string `json:"tls_crt" default:""`
+	//	TLS_key string `json:"tls_key" default:""`
 }
 
 var gCfg ConfigType
+var GitCommit string
 var logFilePtr *os.File
 var db_flag map[string]bool
 var isTLS bool
@@ -236,19 +239,20 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/status", http.HandlerFunc(HandleStatus))          //
+	mux.Handle("/status", http.HandlerFunc(HandleStatus))                 //
 	mux.Handle("/api/v1/exit-server", http.HandlerFunc(HandleExitServer)) //
+	mux.Handle("/api/v1/config", http.HandlerFunc(HandleConfig))          //
 
-	mux.Handle("/enc/", HdlrEncode(data))                 // http.../url=ToUrl					Auth Req
-	mux.Handle("/enc", HdlrEncode(data))                  // http.../url=ToUrl					Auth Req
-	mux.Handle("/upd/", HdlrUpdate(data))                 // http.../url=ToUrl&id=Number		Auth Req
-	mux.Handle("/upd", HdlrUpdate(data))                  // http.../url=ToUrl&id=Number		Auth Req
-	mux.Handle("/dec/", HdlrDecode(data))                 // http.../id=Number
-	mux.Handle("/dec", HdlrDecode(data))                  // http.../id=Number
-	mux.Handle("/list/", HdlrList(data))                  // http...?beg=NUmber&end=Number		Auth Req.
-	mux.Handle("/list", HdlrList(data))                   // http...?beg=NUmber&end=Number		Auth Req.
-	mux.Handle("/bulkLoad", HdlrBulkLoad(data))           //
-	mux.Handle("/status", http.HandlerFunc(HandleStatus)) //
-	mux.Handle("/q/", HdlrRedirect(data))                 //
+	mux.Handle("/enc/", HdlrEncode(data))       // http.../url=ToUrl					Auth Req
+	mux.Handle("/enc", HdlrEncode(data))        // http.../url=ToUrl					Auth Req
+	mux.Handle("/upd/", HdlrUpdate(data))       // http.../url=ToUrl&id=Number		Auth Req
+	mux.Handle("/upd", HdlrUpdate(data))        // http.../url=ToUrl&id=Number		Auth Req
+	mux.Handle("/dec/", HdlrDecode(data))       // http.../id=Number
+	mux.Handle("/dec", HdlrDecode(data))        // http.../id=Number
+	mux.Handle("/list/", HdlrList(data))        // http...?beg=NUmber&end=Number		Auth Req.
+	mux.Handle("/list", HdlrList(data))         // http...?beg=NUmber&end=Number		Auth Req.
+	mux.Handle("/bulkLoad", HdlrBulkLoad(data)) //
+	mux.Handle("/q/", HdlrRedirect(data))       //
 	mux.Handle("/", http.FileServer(http.Dir("www")))
 
 	// ------------------------------------------------------------------------------
@@ -261,7 +265,9 @@ func main() {
 	// Live Monitor Setup
 	// ------------------------------------------------------------------------------
 	monClient, err7 := RedisClient()
-	fmt.Printf("err7=%v AT: %s\n", err7, godebug.LF())
+	if db_flag["mon-conect"] {
+		fmt.Printf("err7=%v AT: %s\n", err7, godebug.LF())
+	}
 	mon := MonAliveLib.NewMonIt(func() *redis.Client { return monClient }, func(conn *redis.Client) {})
 	mon.SendPeriodicIAmAlive("QR-Short-MS")
 
@@ -335,10 +341,10 @@ var nReq = 0
 func HandleStatus(www http.ResponseWriter, req *http.Request) {
 	nReq++
 	fmt.Fprintf(os.Stdout, "\n%sStatus: working.  Requests Served: %d.%s\n", MiscLib.ColorGreen, nReq, MiscLib.ColorReset)
-	www.Header().Set("Content-Type", "text/html; charset=utf-8")
-	www.WriteHeader(http.StatusOK) // 401
-	// fmt.Fprintf(www, "Working.  %d requests. (Version 0.0.18, Mod Date: Thu Feb  7 06:49:19 MST 2019)\n", nReq)
-	fmt.Fprintf(www, "Working.  Version v0.0.19 %d Requests. (Mod Date: Sat Mar 23 08:56:52 MDT 2019)\n", nReq)
+	pid := os.Getpid()
+	www.Header().Set("Content-Type", "application/json; charset=utf-8")
+	www.WriteHeader(http.StatusOK) // 200
+	fmt.Fprintf(www, `{"status":"success", "version":%q, "nReq":%d, "pid":%d}`, GitCommit, nReq, pid)
 	return
 }
 
@@ -439,6 +445,9 @@ func HdlrDecode(data storage.PersistentData) http.Handler {
 		} else {
 			id = req.URL.Query().Get("id")
 		}
+
+		qry := req.URL.RawQuery
+
 		if id == "" {
 			www.WriteHeader(http.StatusBadRequest)
 			fmt.Fprintf(www, "URL Not Found.\n")
@@ -449,14 +458,28 @@ func HdlrDecode(data storage.PersistentData) http.Handler {
 			fmt.Printf("Decode: id=%s, %s\n", id, godebug.LF())
 		}
 
-		urlStr, err := data.Fetch(id)
+		URL, err := data.Fetch(id)
 		if err != nil {
 			www.WriteHeader(http.StatusExpectationFailed)
 			fmt.Fprintf(www, "URL Not Found.  Error: %s\n", err)
 			return
 		}
 
-		www.Write([]byte(urlStr))
+		// Take care of URLs that arlready have prameters in them.
+		uu := string(URL)
+		sep := "?"
+		if strings.Contains(URL, "?") {
+			sep = "&"
+		}
+		if qry != "" {
+			uu += sep + qry
+		}
+
+		if db_flag["db1"] {
+			fmt.Fprintf(os.Stderr, "qry [%s] sep [%s] uu(orig) [%s] final [%s]\n", qry, sep, URL, uu)
+		}
+
+		fmt.Fprintf(www, "%s", uu)
 	}
 	return http.HandlerFunc(handleFunc)
 }
@@ -735,6 +758,20 @@ func HandleExitServer(www http.ResponseWriter, req *http.Request) {
 			fmt.Printf("Error on shutdown: [%s]\n", err)
 		}
 	}()
+}
+
+func HandleConfig(www http.ResponseWriter, req *http.Request) {
+
+	if !lms.IsAuthKeyValid(www, req, &(gCfg.BaseConfigType)) {
+		return
+	}
+	if isTLS {
+		www.Header().Add("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+	}
+	www.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	www.WriteHeader(http.StatusOK) // 200
+	fmt.Fprintf(www, godebug.SVarI(gCfg))
 }
 
 // xyzzy - fix this -- really should be by function debug names.

@@ -9,10 +9,10 @@ LOCALIP=127.0.0.1
 # -v --cookie "USER_TOKEN=Yes"
 
 all:
-	go build
+	../bin/cmp-local.sh
 
 build_linux:
-	GOOS=linux go build -o qr-short.linux .
+	../bin/cmp-prod.sh qr-short.linux
 
 # ---------------------------------------------------------------------------------------
 # Primary local test

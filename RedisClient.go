@@ -11,7 +11,9 @@ import (
 
 func RedisClient() (client *redis.Client, conFlag bool) {
 	var err error
-	fmt.Printf("AT: connect to redis with: %s %s\n", godebug.LF(), gCfg.RedisConnectHost+":"+gCfg.RedisConnectPort)
+	if db_flag["RedisClient"] {
+		fmt.Printf("AT: connect to redis with: %s %s\n", godebug.LF(), gCfg.RedisConnectHost+":"+gCfg.RedisConnectPort)
+	}
 	client, err = redis.Dial("tcp", gCfg.RedisConnectHost+":"+gCfg.RedisConnectPort)
 	if err != nil {
 		fmt.Printf("Error on connect to redis:%s, fatal\n", err)

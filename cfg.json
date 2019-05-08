@@ -1,5 +1,6 @@
 {
       "Copyright"     	  : "Copyright (C) Philip Schlump 2018-2019."
 	, "DataFileDestProd"  : "/home/pschlump/www/2c-why.com/www/demo34/qrdata"
-	, "db_flag": "db-auth,dump-db-flag"
+	, "x_db_flag": "db-auth,dump-db-flag"
+	, "db_flag": ""
 }
