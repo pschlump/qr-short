@@ -14,6 +14,11 @@ all:
 build_linux:
 	../bin/cmp-prod.sh qr-short.linux
 
+deploy_206: build_linux
+	-ssh pschlump@198.58.107.206 "mv ./tools/qr-short/qr-short.linux ,aaaaa"
+	scp qr-short.linux  pschlump@198.58.107.206:/home/pschlump/Projects/qr-short
+	scp run-prod-qr-short.sh pschlump@198.58.107.206:/home/pschlump/Projects/qr-short
+	
 # ---------------------------------------------------------------------------------------
 # Primary local test
 # ---------------------------------------------------------------------------------------
