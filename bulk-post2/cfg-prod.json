@@ -1,0 +1,8 @@
+{
+      "HostComment"    	: "This is the local proxy to the .206 current production server"
+	, "HostURLPort"		: "http://t432z.com"
+    , "Copyright"     	: "Copyright (C) American Certified Brands, LLC. 2018."
+    , "QR_MS_Url"     	: "http://agroledge.com:9022"
+    , "QR_MS_AuthKey"  	: "$ENV$QR_MS_AUTH_TOKEN"
+	, "base_server_url" : "http://www.agroledge.com"
+}

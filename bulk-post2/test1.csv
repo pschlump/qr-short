@@ -1,2 +1,2 @@
-3,,http://www.2c-why.com/demo3?id=3
-,400,http://www.2c-why.com/demo3?id=400
+3,,http://www.2c-why.com/demo3?id36={{.id36}}
+,400,http://www.2c-why.com/demo3?id36={{.id36}}&id10={{.id10}}&tom=jerry

@@ -14,3 +14,8 @@ local_test_001:
 	go build
 	./bulk-post2 --data test1.csv
 
+local_test_002:
+	rm -f bulk-post2
+	go build
+	./bulk-post2 --data test2.csv
+

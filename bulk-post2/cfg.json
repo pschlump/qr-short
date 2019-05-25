@@ -1,0 +1,8 @@
+{
+      "HostComment"        : "This is the local proxy to the local server"
+    , "Copyright"         : "Copyright (C) American Certified Brands, LLC. 2018-2019."
+    , "HostURLPort"        : "http://127.0.0.1:2004"
+	, "base_server_url" : "http://auth.beefchain.com"
+    , "QR_MS_Url"     	: "http://agroledge.com:9022"
+    , "QR_MS_AuthKey"  	: "$ENV$QR_MS_AUTH_TOKEN"
+}

@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/American-Certified-Brands/config-sample/ReadConfig"
 	"github.com/American-Certified-Brands/tools/get"
+	"github.com/pschlump/MiscLib"
 	"github.com/pschlump/godebug"
 	ms "github.com/pschlump/templatestrings"
 )
@@ -24,15 +26,15 @@ import (
 type ConfigType struct {
 	HostURLPort   string `json:"HostURLPort" default:"http://127.0.0.1:2004"`      // URL of qr-short server
 	AuthToken     string `json:"qr_auth_token" default:"$ENV$QR_SHORT_AUTH_TOKEN"` // Auth key for taling to qr-short
-	BaseServerURL string `json:"base_server_url" default:"http://127.0.0.1:9022"`  // QR Image Server (qr-micro-service, 127.0.0.1:9022?)
+	BaseServerURL string `json:"base_server_url" default:"http://127.0.0.1:9022"`  // QR Image Server (qr-micro-service, 127.0.0.1:9022?) // the QR Image Server
+	QR_MS_Url     string `json:"QR_MS_Url" default:"http://127.0.0.1:9022"`        // Server that can allocate new QR codes.
+	QR_MS_AuthKey string `json:"QR_MS_AuthKey" default:"$ENV$QR_MS_AUTH_TOKEN"`
 }
 
 var gCfg ConfigType
 
 var Cfg = flag.String("cfg", "cfg.json", "config file, default ./cfg.json")
 var Data = flag.String("data", "data.csv", "Input to bulk update")
-var StartID = flag.Int("startId", -1, "Starting ID value for automatic generation")
-var EndID = flag.Int("endId", -1, "Ending ID value for automatic generation")
 var Zip = flag.String("zip", "", "zipama")
 var BaseURL = flag.String("baseurl", "http://www.agroledge.com", "URL to pull QR images from.")
 var Server = flag.String("server", "http://127.0.0.1:2004", "Local or remote qr-short server.") // http://t432z.com for remote
@@ -42,7 +44,7 @@ func main() {
 	flag.Parse()
 	fns := flag.Args()
 	if len(fns) > 0 {
-		fmt.Printf("Usage: bulk-post2 [--cfg cfg.json] --data data.csv [ --rpt output-file ] [ --zip zip-file ] [ --baseurl http://www.example.com ]\n")
+		fmt.Printf("Usage: bulk-post2 [--cfg cfg.json] --data data.csv [ --zip zip-file ] [ --baseurl http://www.example.com ]\n")
 		os.Exit(1)
 	}
 
@@ -57,9 +59,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	rawData := ReadData(*Data, *StartID, *EndID)
+	fmt.Printf("Cfg ->%s<-\n", godebug.SVarI(gCfg))
 
-	fmt.Printf("rawData ->%s<-\n", rawData)
+	rawData, raw := ReadData(*Data)
+
+	fmt.Printf("rawData ->%s<- raw ->%s<-\n", rawData, godebug.SVarI(raw))
 
 	// req.Header.Add("Content-Type", "application/x-www-form-urlencoded") //
 	fmt.Fprintf(os.Stderr, "Call To ->%s/bulkLoad<-\n", *Server)
@@ -68,6 +72,43 @@ func main() {
 	}, "update", rawData)
 
 	fmt.Printf("status %d err: %s\nbody: %s\nAT:%s\n", status, err, rv, godebug.LF())
+
+	// for each QR Read
+	//		Go get the QR Image - valiate that the image is available.
+	//			Save image into ./xxx for later zipping
+	//		Go decode the QR - get the destination
+	//			Check that it is working
+	//		Generate index.html for this.
+
+	nSucc := 0
+	nErr := 0
+	nSuccDest := 0
+	nErrDest := 0
+	for ii, vv := range raw {
+		uri := fmt.Sprintf("%s/qr/qr_%05d/q%05d.4.png", gCfg.BaseServerURL, vv.Id10n/100, vv.Id10n)
+		status, img := get.DoGet(uri)
+		if status == 200 {
+			nSucc++
+			if *Zip != "" {
+				os.MkdirAll(fmt.Sprintf("./%s", *Zip), 0755)
+				ioutil.WriteFile(fmt.Sprintf("./%s/q%05d.4.png", *Zip, vv.Id10), []byte(img), 0644)
+				nSucc++
+			}
+			statusDest, _ := get.DoGet(vv.Url)
+			if statusDest == 200 {
+				nSuccDest++
+			} else {
+				nErrDest++
+			}
+		} else {
+			nErr++
+			fmt.Printf("%sLine: %d Unable to get ->%s<- image for QR code, status=%d.%s\n", MiscLib.ColorRed, ii+1, uri, status, MiscLib.ColorReset)
+		}
+	}
+	if nErr == 0 {
+		fmt.Printf("%sSuccessfuil fetch of %d QR code images.%s\n", MiscLib.ColorGreen, nSucc, MiscLib.ColorReset)
+		fmt.Printf("%sDestiations %d succ %d error%s\n", MiscLib.ColorGreen, nSuccDest, nErrDest, MiscLib.ColorReset)
+	}
 }
 
 type DataType struct {
@@ -75,7 +116,14 @@ type DataType struct {
 	ID  string `json:"id"`
 }
 
-func ReadData(fn string, startId, endId int) string {
+type DataReturn struct {
+	Url   string
+	Id10  string
+	Id10n int
+	Id36  string
+}
+
+func ReadData(fn string) (jsonData string, raw []DataReturn) {
 	csvFile, err := os.Open(fn)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading data, unable to open file: %s\n", err)
@@ -127,6 +175,12 @@ func ReadData(fn string, startId, endId int) string {
 			URL: URLfinal,
 			ID:  fmt.Sprintf("%v", mdata["id"]),
 		})
+		raw = append(raw, DataReturn{
+			Url:   URLfinal,
+			Id10:  fmt.Sprintf("%s", mdata["id"]),
+			Id10n: vv,
+			Id36:  fmt.Sprintf("%s", mdata["id36"]),
+		})
 	}
 	dataJSON, err := json.Marshal(data)
 	if err != nil {
@@ -134,7 +188,7 @@ func ReadData(fn string, startId, endId int) string {
 		os.Exit(1)
 	}
 	fmt.Printf("raw data -->>%s<<--\n", dataJSON)
-	return string(dataJSON)
+	return string(dataJSON), raw
 }
 
 func ExecuteATemplate(tmpl string, data map[string]interface{}) (rv string) {
