@@ -117,6 +117,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Unable to read confguration: %s error %s\n", *Cfg, err)
 		os.Exit(1)
 	}
+	db1 = true
+	db2 = true
 
 	// ------------------------------------------------------------------------------
 	// Logging File
@@ -362,6 +364,10 @@ func HdlrEncode(data storage.PersistentData) http.Handler {
 		}
 		found, urlStr := GetVar.GetVar("url", www, req)
 		dataFound, dataStr := GetVar.GetVar("data", www, req)
+
+		// urlStr, _ = url.QueryUnescape(urlStr)
+		// dataStr, _ = url.QueryUnescape(dataStr)
+
 		if found {
 			enc, err := data.Insert(urlStr)
 			if err != nil {
@@ -404,6 +410,10 @@ func HdlrUpdate(data storage.PersistentData) http.Handler {
 		foundUrl, urlStr := GetVar.GetVar("url", www, req)
 		foundId, id := GetVar.GetVar("id", www, req)
 		dataFound, dataStr := GetVar.GetVar("data", www, req)
+
+		// id, _ = url.QueryUnescape(id)
+		// dataStr, _ = url.QueryUnescape(dataStr)
+
 		if foundUrl && foundId {
 			enc, err := data.Update(urlStr, id)
 			if err != nil {
@@ -600,16 +610,19 @@ func HdlrBulkLoad(data storage.PersistentData) http.Handler {
 			return
 		}
 
+		fmt.Printf("%s\n", godebug.LF())
 		type UpdateData struct {
 			Data []struct {
 				URL string `json:"url"`
-				ID  string `json:"Id"`
+				ID  string `json:"id"`
 			}
 		}
 		var respSet []storage.UpdateRespItem
 
+		fmt.Printf("Just Before GetVar.GetVar %s\n", godebug.LF())
 		foundUpdate, updateStr := GetVar.GetVar("update", www, req)
 		if foundUpdate {
+			fmt.Printf(" update found : %s\n", godebug.LF())
 			var update UpdateData
 			if db2 {
 				fmt.Printf("->%s<-, %s\n", updateStr, godebug.LF())
@@ -621,6 +634,7 @@ func HdlrBulkLoad(data storage.PersistentData) http.Handler {
 				fmt.Fprintf(www, "Error: parse error: %s\n", err)
 				return
 			}
+			fmt.Printf("%s\n", godebug.LF())
 			for ii, dat := range update.Data {
 				resp := data.UpdateInsert(dat.URL, dat.ID)
 				resp.Pos = ii
@@ -633,10 +647,12 @@ func HdlrBulkLoad(data storage.PersistentData) http.Handler {
 			www.Header().Set("Content-Length", fmt.Sprintf("%d", len(resp)))
 			www.Header().Set("Length", fmt.Sprintf("%d", len(resp)))
 
+			fmt.Printf("%s\n", godebug.LF())
 			fmt.Fprintf(www, "%s", resp)
 			fmt.Fprintf(logFilePtr, "Bulk Load: %s = %s\n", updateStr, godebug.SVarI(respSet))
 			return
 		}
+		fmt.Printf("%s\n", godebug.LF())
 		www.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(www, "Error: list error\n")
 	}

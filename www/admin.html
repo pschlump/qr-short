@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<link rel="apple-touch-icon" href="favicon.png?v=2">
+	<link rel="shortcut icon" sizes="120x120" href="favicon.png?v=2">
+	<!-- <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico"> -->
+	<meta name="viewport" content="width=device-width, initial-scale=1"> <!-- Make the page mobile compatible -->
+	<meta name="mobile-web-app-capable" content="yes">
+	<title>QR Short Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="/bootstrap-4.3.1-dist/css/bootstrap.css">
+    <link rel="stylesheet" href="/css/bootstrap.curulean-theme.min.css">
+    <link rel="stylesheet" href="/css/bootstrap-datepicker.min.css">
+<style>
+.panel-heading {
+	font-size: x-large;
+}
+.pad5 {
+	x-padding-top: 5px;
+	margin-top: 5px;
+}
+</style>
+</head>
+<body>
+
+	<div class="page-header"><h1> Dash: the multi-micro-service dash board </h1></div>
+
+	<div class="content container">
+		<div class="row">
+			<div class="col-sm-10">
+				<a href="#" id="qr-gen"   class="btn btn-primary pad5" style="width:200px"> QR Gen. M.S. </a>
+				<a href="#" id="email"    class="btn btn-primary pad5" style="width:200px"> Email M.S. </a>
+				<a href="#" id="qr-short" class="btn btn-primary pad5" style="width:200px"> QR Short Service </a>
+				<a href="#" id="pdf-gen"  class="btn btn-primary pad5" style="width:200px"> PDF Gen. </a>
+				<a href="#" id="eth-sign" class="btn btn-primary pad5" style="width:200px"> Eth Sign M.S. </a>
+				<a href="#" id="live-mon" class="btn btn-primary pad5" style="width:200px"> Live Monitor</a>
+			</div>
+		</div>
+	</div>
+
+
+	<div class="content container">
+
+		<div id="email_ms" class="formSection">
+			<div class="row">
+				<div class="col-sm-10">
+					<div class="panel panel-info">
+						<div class="panel-heading"> QR Short </div>
+						<div class="panel-body">
+							<form class="is-form" id="form03" method="GET">
+								<div class="form-group ">
+									<label class="form-control-label">Auth Key</label>
+									<input class="form-control" name="auth_key" type="text">	   
+								</div>
+								<div class="form-group ">
+									<button class="btn btn-primary" id="b_config" type="button">Get Config</button>  
+									Pull back current configuration information.
+									Requries AUTH KEY above.
+								</div>
+								<div class="form-group ">
+									<button class="btn btn-primary" id="b_status" type="button">Status</button>  
+									Get QR M.S. Status - Displayed in "output" below.
+								</div>
+								<div class="form-group ">
+									<button class="btn btn-primary" id="b_exit_ms" type="button">Exit Micro Service</button>  
+									Exit M.S. (In Production will restart <b>automatically</b>)
+									Requries AUTH KEY above.
+								</div>
+							</form>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+
+		<div id="formOutputSec" class="formSection outputSection">
+			<div class="row">
+				<div class="col-sm-10">
+					<div class="panel panel-info">
+						<div class="panel-heading"> Output </div>
+						<div class="panel-body">
+							<pre id="output"></pre>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+
+<!--
+	mux.Handle("/upd/", HdlrUpdate(data))       // http.../url=ToUrl&id=Number		Auth Req
+	mux.Handle("/dec/", HdlrDecode(data))       // http.../id=Number				Auth Req
+	mux.Handle("/list", HdlrList(data))         // http...?beg=NUmber&end=Number		Auth Req.
+	mux.Handle("/q/", HdlrRedirect(data))       //
+-->
+<!--
+		<div id="email_ms" class="formSection">
+			<div class="row">
+				<div class="col-sm-10">
+					<div class="panel panel-info">
+						<div class="panel-heading"> QR Micro Service - Conversions </div>
+						<div class="panel-body">
+							<form class="is-form" id="form01" method="GET">
+								<div class="form-group ">
+									<label class="form-control-label"> Update QR or Set QR </label>
+									<input class="form-control" name="base10" type="text">	   
+								</div>
+								<div class="form-group ">
+									<button class="btn btn-primary" id="b_upd" type="button">Convert base 10 ID to base 36</button>  
+								</div>
+
+								<div class="form-group ">
+									<label class="form-control-label"> Decode existing QR </label>
+									<input class="form-control" name="base36" type="text">	   
+								</div>
+								<div class="form-group ">
+									<button class="btn btn-primary" id="b_dec" type="button">Convert base 36 ID to base 10</button>  
+								</div>
+
+
+
+
+								<div class="form-group ">
+									<label class="form-control-label"> Base URL</label>
+									<input class="form-control" name="baseUrl" type="text" value="http://agroledge.com">
+								</div>
+								<div class="form-group ">
+									<label class="form-control-label"> Base 10 ID</label>
+									<input class="form-control" name="base10id" type="text">	   
+								</div>
+								<div class="form-group ">
+									<button class="btn btn-primary" id="b_conv_gen_url" type="button">Geneerate URL from ID (base 10)</button>  
+								</div>
+
+								<div class="form-group ">
+									<label class="form-control-label"> QR URL</label>
+									<input class="form-control" name="qr_url" type="text" value="http://agroledge.com/qr/qr_00026/q02612.4.png">
+								</div>
+								<div class="form-group ">
+									<button class="btn btn-primary" id="b_conv_parse_url" type="button">Parse QR URL</button>  
+								</div>
+
+							</form>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+-->
+
+
+
+	</div>
+
+<script src="/js/cfg.js"></script>
+<script src="/js/jquery-3.3.1.js"></script>
+<script>
+	$("#qr-gen"  ).attr("href", QRMicroServiceDash);
+	$("#email"   ).attr("href", EmailMicroServiceDash);
+	$("#qr-short").attr("href", QRShortDash);
+	$("#pdf-gen" ).attr("href", PDFMicroServiceDash);
+	$("#eth-sign").attr("href", EthMicroServiceDash);
+	$("#live-mon").attr("href", LiveMoitor);
+</script>
+<script src="js/common.js?_ran_=001"></script>
+<script src="/js/popper-1.14.7.js"></script>
+<script src="/bootstrap-4.3.1-dist/js/bootstrap.js"></script>
+<script>
+
+// --------------------------------------------------------------------------------------------------------------------------
+// TODO
+// 1. cach burser for GET - push into form.
+// 1. Make each thing a link to the other "dash" applications.
+// 2. list pending email in a table ;checkbox for resend by ID
+// --------------------------------------------------------------------------------------------------------------------------
+function submitIt ( event, id, action ) {
+	console.log( "Handler for #"+id+".submit() called." );
+	event.preventDefault();
+
+	var frm = $('#'+id);
+	console.log ( "form data: ", frm.serialize(), "id=", id );
+	$.ajax({
+		type: 'GET',
+		url: action,
+		data: frm.serialize(),
+		success: function (data) {
+			$("#output").text( JSON.stringify(data, null, 4) );
+		},
+		error: function(resp) {
+			$("#output").text( "Error!"+JSON.stringify(resp) );
+			alert("got error status="+resp.status+" "+resp.statusText);
+		}
+	});
+}
+
+$("#b_config").click(function(event){ submitIt(event,"form03",'/api/v1/config'); });
+$("#b_status").click(function(event){ submitIt(event,"form03",'/api/v1/status'); });
+$("#b_exit_ms").click(function(event){ submitIt(event,"form03",'/api/v1/exit-server'); });
+
+//  $("#b_kick").click(function(event){ submitIt(event,"form03",'/api/v1/kick'); });
+// <button class="btn btn-primary" id="b_conv_10_to_36" type="button">Convert base 10 ID to base 36</button>  
+// <button class="btn btn-primary" id="b_conv_36_to_10" type="button">Convert base 36 ID to base 10</button>  
+// <button class="btn btn-primary" id="b_conv_gen_url" type="button">Geneerate URL from ID (base 10)</button>  
+// <button class="btn btn-primary" id="b_conv_parse_url" type="button">Parse QR URL</button>  
+// ("#b_conv_10_to_36" ).click(function(event){ submitIt(event,"form01",'/api/v1/conv-10-to-36'); });
+// ("#b_conv_36_to_10" ).click(function(event){ submitIt(event,"form01",'/api/v1/conv-36-to-10'); });
+// ("#b_conv_gen_url"  ).click(function(event){ submitIt(event,"form01",'/api/v1/gen-qr-url'); });
+// ("#b_conv_parse_url").click(function(event){ submitIt(event,"form01",'/api/v1/parse-qr-url'); });
+
+</script>
+
+</body>
+</html>
