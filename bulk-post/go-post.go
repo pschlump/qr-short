@@ -25,6 +25,9 @@ import (
 
 // TODO
 // 1. --rpt - format return value - xyzzyRpt1
+// 2. Make rpt in 2 formats
+//		1. as a .zip with all the QR images and a CSV file with info on each.
+//		2. as a "HTML" set file wwith a URL - to open from the server.
 
 // ConfigType is the global configuration that is read in from cfg.json
 type ConfigType struct {
@@ -38,7 +41,7 @@ var gCfg ConfigType
 func init() {
 	gCfg = ConfigType{
 		HostURLPort: "http://192.168.0.157:9001", // note the lack of a '/' at the end.
-		AuthToken:   "ENV$QR_SHORT_AUTH_TOKEN",
+		AuthToken:   "$ENV$QR_SHORT_AUTH_TOKEN",
 		DebugFlags:  make([]string, 0, 10),
 	}
 }
@@ -188,7 +191,7 @@ func ReadConfig(fn string, in ConfigType) (rv ConfigType, err error) {
 	}
 
 	// AuthToken:     "ENV$QR_SHORT_AUTH_TOKEN"
-	if strings.HasPrefix(rv.AuthToken, "ENV$") {
+	if strings.HasPrefix(rv.AuthToken, "$ENV$") {
 		name := rv.AuthToken[4:]
 		val := os.Getenv(name)
 		rv.AuthToken = val

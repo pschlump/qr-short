@@ -17,5 +17,6 @@ local_test_001:
 local_test_002:
 	rm -f bulk-post2
 	go build
-	./bulk-post2 --data test2.csv
+	./bulk-post2 --data test2.csv --zip test2.zip
+	unzip -l test2.zip | grep index.json
 
