@@ -1,6 +1,6 @@
 package main
 
-// Copyright (C) Philip Schlump 2018-2019.
+// Copyright (C) Philip Schlump 2016-2019.
 
 import (
 	"context"
