@@ -78,6 +78,13 @@ func (fs *FileStorage) Fetch(id string) (string, error) {
 	return string(data), err
 }
 
+func (fs *FileStorage) FetchRaw(id string) (string, error) {
+	fs.lock.Lock()
+	defer fs.lock.Unlock()
+	data, err := ioutil.ReadFile(filepath.Join(fs.StorageDir, id))
+	return string(data), err
+}
+
 // List returns a list of all the redirects between beg and end, where beg
 // can be 0 to start at the beginning and end can be 'last' to to go the most
 // recent item.

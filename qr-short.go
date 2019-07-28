@@ -255,6 +255,7 @@ func main() {
 	mux.Handle("/list", HdlrList(data))         // http...?beg=NUmber&end=Number		Auth Req.
 	mux.Handle("/bulkLoad", HdlrBulkLoad(data)) //
 	mux.Handle("/q/", HdlrRedirect(data))       //
+	mux.Handle("/t/", HdlrRedirectRaw(data))    //
 	mux.Handle("/", http.FileServer(http.Dir("www")))
 
 	// ------------------------------------------------------------------------------
@@ -509,6 +510,60 @@ func HdlrRedirect(data storage.PersistentData) http.Handler {
 		fmt.Printf("id: [%s]\n", id)
 
 		URL, err := data.Fetch(id)
+		if err != nil {
+			fmt.Printf("%sRedirect occurring from [%s] to [%s] -- failed to find in Redis%s\n", MiscLib.ColorCyan, id, URL, MiscLib.ColorReset)
+			www.WriteHeader(http.StatusNotFound)
+			www.Write([]byte("URL Not Found. Error: " + err.Error() + "\n"))
+			return
+		}
+		/*
+			URL, err = url.QueryUnescape(URL)
+			if err != nil {
+				fmt.Printf("%sRedirect occurring from [%s] to [%s] -- error:%s%s\n", MiscLib.ColorCyan, id, URL, err, MiscLib.ColorReset)
+				www.WriteHeader(500)
+				www.Write([]byte("URL Not Found. Error: " + err.Error() + "\n"))
+				return
+			}
+		*/
+
+		fmt.Printf("%sRedirect occurring from [%s] to [%s]%s\n", MiscLib.ColorCyan, id, URL, MiscLib.ColorReset)
+
+		req.Header.Set("X-QR-Short", "Redirected By")
+		req.Header.Set("X-QR-Short-OrigURL", req.RequestURI)
+
+		// xyzzy2000 -- PJS -- count number of redirects
+		data.IncrementRedirectCount(id)
+
+		// Take care of URLs that arlready have prameters in them.
+		uu := string(URL)
+		sep := "?"
+		if strings.Contains(URL, "?") {
+			sep = "&"
+		}
+		if qry != "" {
+			uu += sep + qry
+		}
+
+		http.Redirect(www, req, uu, http.StatusTemporaryRedirect) // 307
+	}
+	return http.HandlerFunc(handleFunc)
+}
+
+// HdlrRedirect is the real worker in this.  It takes a shortened URL
+// with an ID and redirects it to its destination.
+func HdlrRedirectRaw(data storage.PersistentData) http.Handler {
+	handleFunc := func(www http.ResponseWriter, req *http.Request) {
+		nReq++
+		if db1 {
+			fmt.Printf("Redirect: %s, %s\n", godebug.SVarI(req), godebug.LF())
+		}
+		id := req.URL.Path[len("/t/"):]
+		qry := req.URL.RawQuery
+		fmt.Printf("AT: %s qry ->%s<-\n", godebug.LF(), qry)
+
+		fmt.Printf("id: [%s]\n", id)
+
+		URL, err := data.FetchRaw(id)
 		if err != nil {
 			fmt.Printf("%sRedirect occurring from [%s] to [%s] -- failed to find in Redis%s\n", MiscLib.ColorCyan, id, URL, MiscLib.ColorReset)
 			www.WriteHeader(http.StatusNotFound)

@@ -158,6 +158,18 @@ func (rs *RedisStore) Fetch(code string) (string, error) {
 	return string(urlBytes), err
 }
 
+// Fetch converts from a `code` into a `url` to be returned.
+func (rs *RedisStore) FetchRaw(code string) (string, error) {
+	urlBytes, err := rs.redisConn.Cmd("GET", rs.RedisPrefix+":"+code).Str()
+	if rs.CountHits {
+		_, err := rs.redisConn.Cmd("INCR", rs.RedisPrefix+"^"+code).Int()
+		if err != nil {
+			fmt.Fprintf(rs.Log, "Error: %s, %s\n", err, godebug.LF())
+		}
+	}
+	return string(urlBytes), err
+}
+
 // ConnectToRedis create the connection to the Redis in memory store and returns it.
 func ConnectToRedis(redisHost, redisPort, redisAuth string) (redisConn *redis.Client, err error) {
 	redisConn, err = redis.Dial("tcp", redisHost+":"+redisPort)

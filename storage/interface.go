@@ -11,6 +11,7 @@ type PersistentData interface {
 	Exists(ID string) (found bool)
 	Update(ULR string, ID string) (codeID string, err error)
 	Fetch(ID string) (URL string, err error)
+	FetchRaw(ID string) (URL string, err error)
 	NextID() (ID string)
 	List(string, string) ([]ListData, error)
 	UpdateInsert(URL string, ID string) (ur UpdateRespItem)
